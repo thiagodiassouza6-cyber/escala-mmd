@@ -69,22 +69,30 @@ def carregar_nomes():
         return []
 
 def gerar_escala(nomes):
-    data_inicio = datetime(2026, 1, 1)
-    data_fim = datetime(2026, 12, 31)
+    # LÓGICA INFINITA: Detecta o ano atual do sistema
+    ano_atual = datetime.now().year
+    data_inicio = datetime(ano_atual, 1, 1)
+    data_fim = datetime(ano_atual, 12, 31)
+    
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     escala = []
     idx_nome = 0
+    
     for dia in dias:
         semana = dia.isocalendar()[1]
-        if semana < 13: continue
         dia_semana = dia.weekday()
+        
+        # Define as reuniões do dia
         reunioes = ["Flash Manhã", "DOR"] if dia_semana in [1, 3] else ["Flash Manhã", "Flash Tarde"]
+        
         for r in reunioes:
             while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
+                # Regra específica para o DOR
                 if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
                     idx_nome += 1
                     continue
+                
                 escala.append({
                     "Semana": semana,
                     "Data": dia.strftime("%d/%m/%Y"),
@@ -101,7 +109,7 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        # --- ACESSIBILIDADE EXPANDIDA ---
+        # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state:
             st.session_state.voz = False
             
@@ -112,7 +120,6 @@ if check_login():
             
         if st.session_state.voz:
             st.sidebar.success("Leitura ativada!")
-            # O script agora monitora cards (.card-click) e linhas da tabela (tr)
             components.html("""
                 <script>
                 const synth = window.speechSynthesis;
@@ -124,14 +131,12 @@ if check_login():
                     synth.speak(utter);
                 }
                 
-                // Monitora cards visuais
                 parent.document.querySelectorAll('.card-click').forEach(card => {
                     card.addEventListener('mouseenter', () => {
                         speak(card.getAttribute('data-audio'));
                     });
                 });
 
-                // Monitora linhas da tabela de dados do Streamlit
                 parent.document.querySelectorAll('table tr').forEach(row => {
                     row.addEventListener('mouseenter', () => {
                         const cells = row.querySelectorAll('td');
@@ -139,7 +144,8 @@ if check_login():
                             const data = cells[0].innerText;
                             const dia = cells[1].innerText;
                             const reuniao = cells[2].innerText;
-                            const apresentador = parent.document.querySelector('input[aria-label="🔍 Buscar por Apresentador:"]').value;
+                            const inputElem = parent.document.querySelector('input[aria-label="🔍 Buscar por Apresentador:"]');
+                            const apresentador = inputElem ? inputElem.value : "Selecionado";
                             speak(`${data}. ${dia}. ${reuniao}. Apresentador ${apresentador}.`);
                         }
                     });
@@ -158,7 +164,6 @@ if check_login():
             df_pessoal["Google"] = df_pessoal.apply(lambda x: criar_link_google(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             
-            # Tabela de filtro individual
             st.dataframe(
                 df_pessoal[["Data", "Dia", "Reunião", "Semana", "Google", "Outlook"]],
                 use_container_width=True,
@@ -171,7 +176,16 @@ if check_login():
             st.markdown("---")
 
         st.subheader("🗓️ Cronograma por Semana")
-        semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
+        # Slider dinâmico baseado nas semanas do ano atual
+        semana_atual = datetime.now().isocalendar()[1]
+        lista_semanas = sorted(df_total["Semana"].unique())
+        
+        semana_busca = st.select_slider(
+            "Arraste para ver a escala:", 
+            options=lista_semanas, 
+            value=semana_atual if semana_atual in lista_semanas else lista_semanas[0]
+        )
+        
         df_semana = df_total[df_total["Semana"] == semana_busca]
 
         for data_label, group in df_semana.groupby("Data", sort=False):
@@ -181,8 +195,6 @@ if check_login():
                 with cols[i]:
                     g_link = criar_link_google(row['Data'], row['Reunião'], row['Apresentador'])
                     o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    
-                    # Áudio padrão para cards
                     audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
                     
                     st.markdown(f"""
