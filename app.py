@@ -7,11 +7,11 @@ import streamlit.components.v1 as components
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
-# Link da Planilha
+# Link da Planilha (ID extraído do seu link original)
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
-# Credenciais
+# Credenciais de Acesso
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
@@ -33,7 +33,7 @@ def check_login():
         return False
     return True
 
-def criar_link_agenda(data_str, reuniao, apresentador):
+def criar_link_google(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
         hora = "094500" if "Manhã" in reuniao else "150000"
@@ -47,104 +47,11 @@ def criar_link_agenda(data_str, reuniao, apresentador):
     except:
         return "#"
 
-@st.cache_data(ttl=60)
-def carregar_nomes():
+def criar_link_outlook(data_str, reuniao, apresentador):
     try:
-        df_sheets = pd.read_csv(SHEET_URL)
-        return sorted(df_sheets['Funcionario'].dropna().unique().tolist())
-    except Exception as e:
-        st.error(f"Erro ao carregar coluna 'Funcionario': {e}")
-        return []
-
-def gerar_escala(nomes):
-    data_inicio = datetime(2026, 1, 1)
-    data_fim = datetime(2026, 12, 31)
-    dias = pd.date_range(data_inicio, data_fim, freq='B')
-    escala = []
-    idx_nome = 0
-    for dia in dias:
-        semana = dia.isocalendar()[1]
-        if semana < 13: continue
-        dia_semana = dia.weekday()
-        reunioes = ["Flash Manhã", "DOR"] if dia_semana in [1, 3] else ["Flash Manhã", "Flash Tarde"]
-        for r in reunioes:
-            while True:
-                nome_atual = nomes[idx_nome % len(nomes)]
-                if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
-                    idx_nome += 1
-                    continue
-                escala.append({
-                    "Semana": semana,
-                    "Data": dia.strftime("%d/%m/%Y"),
-                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                    "Reunião": r,
-                    "Apresentador": nome_atual
-                })
-                idx_nome += 1
-                break
-    return pd.DataFrame(escala)
-
-if check_login():
-    nomes_lista = carregar_nomes()
-    if nomes_lista:
-        df_total = gerar_escala(nomes_lista)
-        
-        # --- BOTÃO DE ACESSIBILIDADE ---
-        if "acessibilidade" not in st.session_state:
-            st.session_state.acessibilidade = False
-            
-        st.sidebar.title("Acessibilidade")
-        if st.sidebar.button("🔊 Ativar/Desativar Leitura por Voz"):
-            st.session_state.acessibilidade = not st.session_state.acessibilidade
-            st.rerun()
-            
-        if st.session_state.acessibilidade:
-            st.sidebar.success("Leitura ativada! Passe o mouse nos cards.")
-            # Script JavaScript para leitura por voz
-            components.html("""
-                <script>
-                const synth = window.speechSynthesis;
-                function speak(text) {
-                    if (synth.speaking) { synth.cancel(); }
-                    const utterThis = new SpeechSynthesisUtterance(text);
-                    utterThis.lang = 'pt-BR';
-                    synth.speak(utterThis);
-                }
-
-                parent.document.querySelectorAll('.card-leitura').forEach(item => {
-                    item.addEventListener('mouseenter', event => {
-                        const texto = item.getAttribute('data-audio');
-                        speak(texto);
-                    });
-                });
-                </script>
-            """, height=0)
-
-        st.title("🚀 MMD | Dashboard de Apresentações")
-        
-        opcoes_nomes = ["Todos"] + nomes_lista
-        filtro_nome = st.selectbox("🔍 Buscar por Apresentador (Lista Anual):", opcoes_nomes)
-        
-        st.markdown("---")
-        st.subheader("🗓️ Cronograma por Semana")
-        semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
-        df_semana = df_total[df_total["Semana"] == semana_busca]
-
-        for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]:
-                    link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
-                    texto_leitura = f"Reunião {row['Reunião']}. Apresentador {row['Apresentador']}."
-                    
-                    st.markdown(f"""
-                    <div class="card-leitura" data-audio="{texto_leitura}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
-                        </div>
-                        <a href="{link}" target="_blank" style="text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 3px 8px; border-radius: 5px; font-size: 12px; text-align: center; margin-top: 10px; background-color: white;">🔔 Agendar</a>
-                    </div>
-                    """, unsafe_allow_html=True)
-            st.write("")
+        data_obj = datetime.strptime(data_str, "%d/%m/%Y")
+        data_iso = data_obj.strftime("%Y-%m-%d")
+        hora_start = "09:45:00" if "Manhã" in reuniao else "15:00:00"
+        hora_end = "10:15:00" if "Manhã" in reuniao else "15:30:00"
+        assunto = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
+        corpo = urllib.parse.quote(f"Apresentador: {ap
