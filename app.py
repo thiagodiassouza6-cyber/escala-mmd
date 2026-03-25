@@ -13,16 +13,17 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
+# --- LISTA DE BACKUPS ATUALIZADA ---
 MAPA_BACKUPS = {
-    "Abigail": "Sonia", "Amanda": "Mijal", "Anna": "Soledad", 
+    "Abigail": "Dani", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Enrique": "Jazmin", 
-    "Debora": "Bruna", "Diana": "Julia", "Faiha": "Bianca S.", 
-    "Florencia": "Diana", "Gisele": "Thiago", "Honorato": "Bruno", 
-    "Jazmin": "Abigail", "Jesus": "Luca", "Julia": "Honorato", 
-    "Livia": "Faiha", "Luca": "Enrique", "Mijal": "Livia", 
-    "Rafael": "Florencia", "Renan": "Debora", "Sonia": "Jesus", 
-    "Soledad": "Gisele", "Thiago": "Renan"
+    "Dani": "Sonia", "Debora": "Bruna", "Diana": "Julia", 
+    "Faiha": "Bianca S.", "Florencia": "Diana", "Gisele": "Thiago", 
+    "Honorato": "Bruno", "Jazmin": "Abigail", "Jesus": "Luca", 
+    "Julia": "Honorato", "Livia": "Faiha", "Luca": "Enrique", 
+    "Mijal": "Livia", "Rafael": "Florencia", "Renan": "Debora", 
+    "Sonia": "Jesus", "Soledad": "Gisele", "Thiago": "Renan"
 }
 
 def check_login():
@@ -70,9 +71,7 @@ def gerar_escala_final(nomes):
     data_fim = datetime(ano_atual, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
-    # Fila A: Para todas as Flashes (Manhã e Tarde)
     fila_flash = nomes.copy()
-    # Fila B: Exclusiva para DOR (Sem Dani e Rafael)
     fila_dor = [n for n in nomes if n not in ["Dani", "Rafael"]]
     
     idx_f = 0
@@ -80,12 +79,12 @@ def gerar_escala_final(nomes):
     escala = []
 
     for dia in dias:
-        dia_semana = dia.weekday() # 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
+        dia_semana = dia.weekday() 
         data_s = dia.strftime("%d/%m/%Y")
         sem = dia.isocalendar()[1]
         dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
 
-        # --- MANHÃ (Todos os dias tem Flash Manhã) ---
+        # --- MANHÃ ---
         ap_m = fila_flash[idx_f % len(fila_flash)]
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": dia_nome,
@@ -95,11 +94,10 @@ def gerar_escala_final(nomes):
         })
         idx_f += 1
 
-        # --- TARDE (Alternado) ---
+        # --- TARDE (Alternado conforme regra) ---
         if dia_semana in [1, 3]: # Terça e Quinta = DOR
             ap_d = fila_dor[idx_d % len(fila_dor)]
-            # Evita a mesma pessoa apresentar manhã e tarde no mesmo dia
-            if ap_d == ap_m:
+            if ap_d == ap_m: # Evita duplicidade no dia
                 idx_d += 1
                 ap_d = fila_dor[idx_d % len(fila_dor)]
             
@@ -111,7 +109,7 @@ def gerar_escala_final(nomes):
             })
             idx_d += 1
             
-        elif dia_semana in [0, 2, 4]: # Segunda, Quarta e Sexta = Flash Tarde
+        elif dia_semana in [0, 2, 4]: # Seg, Qua e Sex = Flash Tarde
             ap_t = fila_flash[idx_f % len(fila_flash)]
             if ap_t == ap_m:
                 idx_f += 1
@@ -150,7 +148,7 @@ if check_login():
         # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
-        if st.sidebar.button("🔊 Acessibilidade (Voz)"):
+        if st.sidebar.button("🔊 Acessibilidade"):
             st.session_state.voz = not st.session_state.voz
             st.rerun()
             
@@ -174,7 +172,7 @@ if check_login():
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTRO INDIVIDUAL (TABELA) ---
+        # --- FILTRO POR APRESENTADOR (FORMATO LISTA) ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
@@ -190,7 +188,7 @@ if check_login():
             )
             st.markdown("---")
 
-        # --- VISUALIZAÇÃO SEMANAL ---
+        # --- VISUALIZAÇÃO POR SEMANA ---
         st.subheader("🗓️ Visualização por Semana")
         sem_atual = datetime.now().isocalendar()[1]
         lista_s = sorted(df_total["Semana"].unique())
@@ -203,13 +201,3 @@ if check_login():
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
                     renderizar_card(row)
-
-        # --- RODAPÉ: TODOS OS CARDS ---
-        st.markdown("---")
-        with st.expander("📂 Ver Escala Completa (Cards)"):
-            for d_label, group in df_total.groupby("Data", sort=False):
-                st.write(f"Data: {d_label}")
-                cols_full = st.columns(5)
-                for i, (_, row) in enumerate(group.iterrows()):
-                    with cols_full[i % 5]:
-                        renderizar_card(row)
