@@ -64,15 +64,17 @@ def carregar_nomes():
         st.error(f"Erro ao carregar dados: {e}")
         return []
 
-def gerar_escala_sequencial(nomes):
+def gerar_escala_justa(nomes):
     ano_atual = datetime.now().year
     data_inicio = datetime(ano_atual, 1, 1)
     data_fim = datetime(ano_atual, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
     escala = []
-    idx_nome = 0
-    participacao_semanal = {}
+    idx_fila = 0 # Ponteiro da fila única
+    
+    # Controle para evitar que a mesma pessoa apresente 2x na semana
+    participacao_semanal = {} 
 
     for dia in dias:
         semana = dia.isocalendar()[1]
@@ -80,15 +82,21 @@ def gerar_escala_sequencial(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
+        # Define as reuniões do dia
         reunioes_dia = ["Flash Manhã"]
         if dia_semana in [1, 3]: reunioes_dia.append("DOR")
         else: reunioes_dia.append("Flash Tarde")
 
         for r_tipo in reunioes_dia:
+            tentativas = 0
             encontrou = False
-            for _ in range(len(nomes)):
-                candidato = nomes[idx_nome % len(nomes)]
+            
+            while tentativas < len(nomes):
+                candidato = nomes[idx_fila % len(nomes)]
+                
+                # Regra 1: Não pode repetir na mesma semana
                 ja_foi_na_semana = candidato in participacao_semanal[semana]
+                # Regra 2: Dani e Rafael não fazem DOR
                 bloqueio_especial = (r_tipo == "DOR" and candidato in ["Dani", "Rafael"])
 
                 if not ja_foi_na_semana and not bloqueio_especial:
@@ -100,22 +108,26 @@ def gerar_escala_sequencial(nomes):
                         "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
                     })
                     participacao_semanal[semana].add(candidato)
-                    idx_nome += 1
+                    idx_fila += 1 # Move para o próximo da fila
                     encontrou = True
                     break
                 else:
-                    idx_nome += 1
+                    # Se ele não pode (por ser DOR ou já ter ido na semana), 
+                    # tentamos o próximo da fila para ESTA vaga, mas não avançamos o idx_fila global
+                    # para que o pulado seja o primeiro da lista na próxima vaga disponível.
+                    idx_fila += 1
+                    tentativas += 1
             
+            # Se a fila travar (ex: todos já foram na semana), libera a repetição
             if not encontrou:
-                candidato = nomes[idx_nome % len(nomes)]
+                candidato = nomes[idx_fila % len(nomes)]
                 escala.append({
                     "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
-                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
                     "Reunião": r_tipo, "Apresentador": candidato,
                     "Backup": MAPA_BACKUPS.get(candidato, "N/A"),
                     "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
                 })
-                idx_nome += 1
+                idx_fila += 1
 
     return pd.DataFrame(escala)
 
@@ -137,7 +149,7 @@ def renderizar_card(row):
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
-        df_total = gerar_escala_sequencial(nomes_lista)
+        df_total = gerar_escala_justa(nomes_lista)
         
         # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state: st.session_state.voz = False
@@ -166,50 +178,38 @@ if check_login():
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTRO POR APRESENTADOR (FORMATO LISTA) ---
+        # --- FILTRO POR APRESENTADOR ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
             st.markdown(f"### 📅 Lista de Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            
-            # Formatando a tabela para o formato antigo
-            df_display = df_pessoal[["Data", "Reunião", "Apresentador", "Backup", "Link"]]
-            
             st.data_editor(
-                df_display,
+                df_pessoal[["Data", "Reunião", "Apresentador", "Backup", "Link"]],
                 column_config={
-                    "Link": st.column_config.LinkColumn(
-                        "Agenda Outlook",
-                        help="Clique para adicionar ao seu calendário",
-                        validate="^https://.*",
-                        display_text="📅 AGENDAR"
-                    ),
+                    "Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR"),
                     "Data": st.column_config.TextColumn("Data"),
-                    "Reunião": st.column_config.TextColumn("Reunião"),
                 },
-                hide_index=True,
-                use_container_width=True,
-                disabled=True # Impede edição, funciona apenas como visualização
+                hide_index=True, use_container_width=True, disabled=True
             )
             st.markdown("---")
 
-        # --- CRONOGRAMA SEMANAL (MANTIDO EM CARDS PARA VISUALIZAÇÃO RÁPIDA) ---
+        # --- CRONOGRAMA SEMANAL ---
         st.subheader("🗓️ Visualização por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Arraste para ver outras semanas:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
         
         df_semana = df_total[df_total["Semana"] == semana_busca]
         for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
+            st.markdown(f"**{group['Dia'].iloc[0] if 'Dia' in group.columns else ''} - {data_label}**")
             cols = st.columns(len(group))
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
                     renderizar_card(row)
 
-        # --- RODAPÉ: TODOS OS CARDS ---
+        # --- ESCALA COMPLETA ---
         st.markdown("---")
         with st.expander("📂 Ver Escala Completa (Todos os Dias)"):
             for data_label, group in df_total.groupby("Data", sort=False):
