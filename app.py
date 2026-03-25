@@ -6,7 +6,7 @@ import urllib.parse
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
-# Link da Planilha Atualizado
+# Link da Planilha (ID extraído do seu link)
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
@@ -41,7 +41,7 @@ def criar_link_agenda(data_str, reuniao, apresentador):
         fim_obj = datetime.strptime(inicio, "%Y%m%dT%H%M%S") + timedelta(minutes=30)
         fim = fim_obj.strftime("%Y%m%dT%H%M%S")
         titulo = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
-        detalhes = urllib.parse.quote(f"Apresentador: {apresentador}\nLembrete de 60 min.")
+        detalhes = urllib.parse.quote(f"Apresentador: {apresentador}")
         return f"https://www.google.com/calendar/render?action=TEMPLATE&text={titulo}&dates={inicio}/{fim}&details={detalhes}"
     except:
         return "#"
@@ -50,10 +50,10 @@ def criar_link_agenda(data_str, reuniao, apresentador):
 def carregar_nomes():
     try:
         df_sheets = pd.read_csv(SHEET_URL)
-        # Ajustado para o nome exato da sua coluna na planilha
-        return sorted(df_sheets['Funcionários'].dropna().unique().tolist())
+        # AJUSTADO: Nome exato da coluna na sua planilha
+        return sorted(df_sheets['Funcionario'].dropna().unique().tolist())
     except Exception as e:
-        st.error(f"Erro ao carregar planilha: {e}")
+        st.error(f"Erro ao carregar coluna 'Funcionario': {e}")
         return []
 
 def gerar_escala(nomes):
@@ -70,7 +70,6 @@ def gerar_escala(nomes):
         for r in reunioes:
             while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
-                # Regra para evitar Dani ou Rafael no DOR
                 if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
                     idx_nome += 1
                     continue
@@ -94,10 +93,6 @@ if check_login():
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador (Lista Anual):", opcoes_nomes)
         
-        if st.sidebar.button("🔄 Atualizar Dados"):
-            st.cache_data.clear()
-            st.rerun()
-
         if filtro_nome != "Todos":
             st.markdown("---")
             st.subheader(f"📅 Cronograma Anual: {filtro_nome}")
@@ -116,20 +111,19 @@ if check_login():
             semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
             df_semana = df_total[df_total["Semana"] == semana_busca]
 
-            # Cards com tratamento de erro
             for data_label, group in df_semana.groupby("Data", sort=False):
                 st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
                 cols = st.columns(len(group))
                 for i, (_, row) in enumerate(group.iterrows()):
                     with cols[i]:
                         link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
-                        # HTML simplificado para evitar quebras
-                        card_html = f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; border-left: 5px solid #ff4b4b; min-height: 120px;">
-                            <b style="font-size: 14px;">{row['Reunião']}</b><br>
-                            <span style="font-size: 13px;">🏆 {row['Apresentador']}</span><br><br>
-                            <a href="{link}" target="_blank" style="font-size: 12px; color: #ff4b4b; text-decoration: none; border: 1px solid #ff4b4b; padding: 2px 5px; border-radius: 4px;">🔔 Agenda</a>
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
+                                <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
+                            </div>
+                            <a href="{link}" target="_blank" style="text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 3px 8px; border-radius: 5px; font-size: 12px; text-align: center; margin-top: 10px; background-color: white;">🔔 Agendar</a>
                         </div>
-                        """
-                        st.markdown(card_html, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
                 st.write("")
