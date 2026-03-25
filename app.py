@@ -114,4 +114,17 @@ if check_login():
             # Cards Alinhados
             for data_label, group in df_semana.groupby("Data", sort=False):
                 st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-                cols = st
+                cols = st.columns(len(group))
+                for i, (_, row) in enumerate(group.iterrows()):
+                    with cols[i]:
+                        # CSS para forçar altura e alinhamento
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; height: 160px; border-left: 5px solid #ff4b4b; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <b style="color: #31333F; font-size: 1.1em;">{row['Reunião']}</b><br>
+                                <span style="color: #555;">🏆 {row['Apresentador']}</span>
+                            </div>
+                            <a href="{criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])}" target="_blank" style="text-decoration: none; background-color: white; color: #ff4b4b; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; text-align: center; border: 1px solid #ff4b4b;">🔔 Agendar</a>
+                        </div>
+                        """, unsafe_allow_html=True)
+                st.write("") # Espaçador entre dias
