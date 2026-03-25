@@ -101,7 +101,7 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        # --- ACESSIBILIDADE AJUSTADA ---
+        # --- ACESSIBILIDADE EXPANDIDA ---
         if "voz" not in st.session_state:
             st.session_state.voz = False
             
@@ -112,6 +112,7 @@ if check_login():
             
         if st.session_state.voz:
             st.sidebar.success("Leitura ativada!")
+            # O script agora monitora cards (.card-click) e linhas da tabela (tr)
             components.html("""
                 <script>
                 const synth = window.speechSynthesis;
@@ -122,9 +123,25 @@ if check_login():
                     utter.rate = 1.0; 
                     synth.speak(utter);
                 }
+                
+                // Monitora cards visuais
                 parent.document.querySelectorAll('.card-click').forEach(card => {
                     card.addEventListener('mouseenter', () => {
                         speak(card.getAttribute('data-audio'));
+                    });
+                });
+
+                // Monitora linhas da tabela de dados do Streamlit
+                parent.document.querySelectorAll('table tr').forEach(row => {
+                    row.addEventListener('mouseenter', () => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 3) {
+                            const data = cells[0].innerText;
+                            const dia = cells[1].innerText;
+                            const reuniao = cells[2].innerText;
+                            const apresentador = parent.document.querySelector('input[aria-label="🔍 Buscar por Apresentador:"]').value;
+                            speak(`${data}. ${dia}. ${reuniao}. Apresentador ${apresentador}.`);
+                        }
                     });
                 });
                 </script>
@@ -141,6 +158,7 @@ if check_login():
             df_pessoal["Google"] = df_pessoal.apply(lambda x: criar_link_google(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             
+            # Tabela de filtro individual
             st.dataframe(
                 df_pessoal[["Data", "Dia", "Reunião", "Semana", "Google", "Outlook"]],
                 use_container_width=True,
@@ -164,7 +182,7 @@ if check_login():
                     g_link = criar_link_google(row['Data'], row['Reunião'], row['Apresentador'])
                     o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
                     
-                    # PADRÃO DE VOZ CORRIGIDO: Data - Dia - Reunião - Apresentador
+                    # Áudio padrão para cards
                     audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
                     
                     st.markdown(f"""
