@@ -59,9 +59,12 @@ def gerar_escala(nomes):
     idx_nome = 0
     for dia in dias:
         semana = dia.isocalendar()[1]
-        if semana < 13: continue
+        if semana < 13: continue # Começando na semana atual do projeto
         dia_semana = dia.weekday()
+        
+        # Terças e Quintas: Apenas Manhã e DOR (2 reuniões)
         reunioes = ["Flash Manhã", "DOR"] if dia_semana in [1, 3] else ["Flash Manhã", "Flash Tarde"]
+        
         for r in reunioes:
             while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
@@ -83,55 +86,54 @@ if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
-        semana_atual_num = 13 
-
+        
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTROS ---
-        col_f1, col_f2 = st.columns([1, 2])
-        with col_f1:
-            # Novo campo de busca por nome
-            opcoes_nomes = ["Todos"] + nomes_lista
-            filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
+        # --- FILTRO POR NOME ---
+        opcoes_nomes = ["Todos"] + nomes_lista
+        filtro_nome = st.selectbox("🔍 Buscar por Apresentador (Listar todos os dias do ano):", opcoes_nomes)
         
-        st.sidebar.button("🔄 Atualizar Planilha", on_click=st.cache_data.clear)
+        st.sidebar.button("🔄 Atualizar Dados", on_click=st.cache_data.clear)
 
-        # Aplicando filtro de nome se não for "Todos"
-        df_filtrado = df_total.copy()
         if filtro_nome != "Todos":
-            df_filtrado = df_total[df_total["Apresentador"] == filtro_nome]
-
-        # --- SEÇÃO DE DESTAQUE ---
-        st.markdown("---")
-        st.subheader(f"📌 Minhas Apresentações (Semana {semana_atual_num})")
+            # --- VISÃO FILTRADA (LISTAGEM ANUAL) ---
+            st.markdown("---")
+            st.subheader(f"📅 Cronograma Anual: {filtro_nome}")
+            
+            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
+            
+            if not df_pessoal.empty:
+                # Criar coluna com link de agenda para a tabela
+                df_pessoal["Lembrete Google"] = df_pessoal.apply(
+                    lambda x: criar_link_agenda(x["Data"], x["Reunião"], x["Apresentador"]), axis=1
+                )
+                
+                # Exibe a tabela completa com as colunas relevantes
+                st.dataframe(
+                    df_pessoal[["Data", "Dia", "Reunião", "Semana"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                st.info(f"O apresentador **{filtro_nome}** possui {len(df_pessoal)} apresentações até o fim de 2026.")
+            else:
+                st.warning("Nenhuma apresentação encontrada para este nome.")
         
-        # Filtra a semana atual dentro do que já foi filtrado por nome
-        df_semana = df_filtrado[df_filtrado["Semana"] == semana_atual_num]
-        
-        if not df_semana.empty:
-            for data_label, group in df_semana.groupby("Data", sort=False):
-                st.markdown(f"#### 📅 {group['Dia'].iloc[0]} ({data_label})")
-                cols = st.columns(len(group) if len(group) > 0 else 1)
-                for i, (_, row) in enumerate(group.iterrows()):
-                    with cols[i]:
-                        st.info(f"**{row['Reunião']}**\n\n🏆 {row['Apresentador']}")
-                        link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
-                        st.markdown(f"[🔔 Agendar no Google]({link})")
         else:
-            st.write("Nenhuma apresentação encontrada para este filtro nesta semana.")
-
-        # --- SEÇÃO DE CRONOGRAMA COMPLETO ---
-        st.markdown("---")
-        st.subheader("🗓️ Cronograma Geral")
-        
-        # Slider de semana (sempre disponível)
-        semana_busca = st.select_slider("Selecione a semana para detalhamento:", 
-                                        options=sorted(df_total["Semana"].unique()), 
-                                        value=semana_atual_num)
-        
-        # Tabela final: Filtrada por Nome (se houver) E por Semana
-        df_tabela = df_filtrado[df_filtrado["Semana"] == semana_busca].drop(columns=["Semana"])
-        st.dataframe(df_tabela, use_container_width=True, hide_index=True)
-        
-        if filtro_nome != "Todos":
-            st.success(f"Exibindo apenas resultados para: **{filtro_nome}**")
+            # --- VISÃO GERAL (CRONOGRAMA POR SEMANA) ---
+            st.markdown("---")
+            st.subheader("🗓️ Cronograma Geral por Semana")
+            
+            semana_busca = st.select_slider("Arraste para ver a escala da semana:", 
+                                            options=sorted(df_total["Semana"].unique()), 
+                                            value=13)
+            
+            df_semana = df_total[df_total["Semana"] == semana_busca].drop(columns=["Semana"])
+            
+            # Exibição em Cards para facilitar leitura rápida
+            cols = st.columns(len(df_semana) if len(df_semana) > 0 else 1)
+            for i, (_, row) in enumerate(df_semana.iterrows()):
+                with cols[i]:
+                    st.info(f"**{row['Data']}** ({row['Dia']})\n\n**{row['Reunião']}**\n\n🏆 {row['Apresentador']}")
+            
+            st.table(df_semana)
