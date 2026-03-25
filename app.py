@@ -5,6 +5,10 @@ from datetime import datetime
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
+# CONFIGURAÇÃO DO GOOGLE SHEETS
+SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
+
 # Credenciais
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
@@ -27,54 +31,84 @@ def check_login():
         return False
     return True
 
+@st.cache_data(ttl=600)
+def carregar_nomes():
+    try:
+        # Lê a planilha e busca a coluna 'Funcionário'
+        df_sheets = pd.read_csv(SHEET_URL)
+        return df_sheets['Funcionário'].dropna().tolist()
+    except Exception as e:
+        st.error("Erro ao ler a planilha. Verifique se o nome da coluna é 'Funcionário'.")
+        return []
+
 def gerar_escala(nomes):
     data_inicio = datetime(2026, 1, 1)
     data_fim = datetime(2026, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     escala = []
     idx_nome = 0
+    
     for dia in dias:
         semana = dia.isocalendar()[1]
         if semana < 13: continue
+        
         dia_semana = dia.weekday()
-        reunioes = ["Flash Manhã", "Flash Tarde"] if dia_semana in [0, 2, 4] else \
-                   ["Flash Manhã", "DOR" if dia_semana == 1 else "Flash Tarde"]
+        # Define as reuniões do dia
+        if dia_semana in [1, 3]: # Terça e Quinta
+            reunioes = ["Flash Manhã", "DOR", "Flash Tarde"]
+        else: # Segunda, Quarta e Sexta
+            reunioes = ["Flash Manhã", "Flash Tarde"]
+            
         for r in reunioes:
-            apresentadores = []
-            while len(apresentadores) < 2:
+            while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
+                # Regra DOR: Dani e Rafael não apresentam
                 if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
                     idx_nome += 1
                     continue
-                apresentadores.append(nome_atual)
+                
+                escala.append({
+                    "Semana": semana,
+                    "Data": dia.strftime("%d/%m/%Y"),
+                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+                    "Reunião": r,
+                    "Apresentador": nome_atual
+                })
                 idx_nome += 1
-            escala.append({
-                "Semana": semana,
-                "Data": dia.strftime("%d/%m/%Y"),
-                "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                "Reunião": r,
-                "Apresentadores": f"{apresentadores[0]} & {apresentadores[1]}"
-            })
+                break
+                
     return pd.DataFrame(escala)
 
 if check_login():
-    nomes_base = ["Debora", "Dani", "Abigail", "Luca", "Bruno", "Thiago", "Anna", "Bianca S.", "Amanda", "Julia", "Bruna", "Renan", "Livia", "Rafael", "Ariel", "Enrique", "Gisele", "Sonia", "Jazmin", "Florencia", "Jesus", "Bianca M.", "Soledad", "Mijal", "Honorato"]
-    df = gerar_escala(nomes_base)
-    semana_atual_num = datetime.now().isocalendar()[1]
+    nomes_dinamicos = carregar_nomes()
     
-    st.title("🚀 MMD | Dashboard de Apresentações")
-    st.markdown("---")
-    st.subheader(f"📌 Destaque: Semana {semana_atual_num}")
-    
-    df_hoje = df[df["Semana"] == semana_atual_num]
-    if not df_hoje.empty:
-        cols = st.columns(len(df_hoje))
-        for i, (index, row) in enumerate(df_hoje.iterrows()):
-            with cols[i]:
-                st.info(f"**{row['Dia']}**\n\n{row['Reunião']}\n\n🏆 {row['Apresentadores']}")
-    
-    st.markdown("---")
-    st.subheader("🗓️ Cronograma Completo")
-    semana_busca = st.slider("Selecione a Semana:", 13, 53, int(semana_atual_num))
-    df_final = df[df["Semana"] == semana_busca]
-    st.table(df_final)
+    if nomes_dinamicos:
+        df = gerar_escala(nomes_dinamicos)
+        # Como hoje é 25/03/2026, a semana atual é 13
+        semana_atual_num = 13 
+        
+        st.title("🚀 MMD | Dashboard de Apresentações")
+        st.sidebar.button("🔄 Atualizar Dados da Planilha", on_click=st.cache_data.clear)
+        
+        st.markdown("---")
+        st.subheader(f"📌 Destaque da Semana {semana_atual_num}")
+        
+        df_semana = df[df["Semana"] == semana_atual_num]
+        
+        if not df_semana.empty:
+            # Exibição em cards organizados por reunião
+            for data_label, group in df_semana.groupby("Data", sort=False):
+                st.markdown(f"#### 📅 {group['Dia'].iloc[0]} ({data_label})")
+                cols = st.columns(len(group))
+                for i, (_, row) in enumerate(group.iterrows()):
+                    with cols[i]:
+                        st.info(f"**{row['Reunião']}**\n\n🏆 {row['Apresentador']}")
+        
+        st.markdown("---")
+        st.subheader("🗓️ Consulta de Outras Semanas")
+        semana_busca = st.select_slider("Arraste para ver o cronograma:", options=sorted(df["Semana"].unique()), value=semana_atual_num)
+        
+        df_final = df[df["Semana"] == semana_busca].drop(columns=["Semana"])
+        st.dataframe(df_final, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Aguardando lista de nomes da planilha... Verifique se a célula A1 é 'Funcionário'.")
