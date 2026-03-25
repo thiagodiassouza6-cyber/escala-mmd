@@ -4,19 +4,13 @@ from datetime import datetime
 import urllib.parse
 import streamlit.components.v1 as components
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
+# --- CONFIGURAÇÃO ---
+st.set_page_config(page_title="MMD | Dashboard", layout="wide")
 
-# Link da Planilha
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
-# Credenciais
-USER_ACCESS = "MMD-Board"
-PASS_ACCESS = "@MMD123#"
-
-# --- MAPEAMENTO DE BACKUPS ATUALIZADO (FINAL) ---
-# Baseado na última imagem enviada
+# Backup fixo conforme última imagem
 MAPA_BACKUPS = {
     "Abigail": "Sonia", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
@@ -29,23 +23,8 @@ MAPA_BACKUPS = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
-def check_login():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if not st.session_state.logged_in:
-        st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1,1,1])
-        with col2:
-            user = st.text_input("Usuário")
-            password = st.text_input("Senha", type="password")
-            if st.button("Acessar Painel", use_container_width=True):
-                if user == USER_ACCESS and password == PASS_ACCESS:
-                    st.session_state.logged_in = True
-                    st.rerun()
-                else:
-                    st.error("Usuário ou senha incorretos.")
-        return False
-    return True
+# Sequência obrigatória definida
+SEQUENCIA_REUNIOES = ["Flash Manhã", "Flash Tarde", "DOR"]
 
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
@@ -54,7 +33,7 @@ def criar_link_outlook(data_str, reuniao, apresentador):
         hora_start = "09:45:00" if "Manhã" in reuniao else "15:00:00"
         hora_end = "10:15:00" if "Manhã" in reuniao else "15:30:00"
         assunto = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
-        corpo = urllib.parse.quote(f"Apresentador: {apresentador}")
+        corpo = urllib.parse.quote(f"Apresentador: {apresentador} | Backup: {MAPA_BACKUPS.get(apresentador, 'N/A')}")
         return f"https://outlook.office.com/calendar/0/deeplink/compose?subject={assunto}&body={corpo}&startdt={data_iso}T{hora_start}&enddt={data_iso}T{hora_end}"
     except:
         return "#"
@@ -62,21 +41,22 @@ def criar_link_outlook(data_str, reuniao, apresentador):
 @st.cache_data(ttl=60)
 def carregar_nomes():
     try:
-        df_sheets = pd.read_csv(SHEET_URL)
-        return sorted(df_sheets['Funcionario'].dropna().unique().tolist())
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        df = pd.read_csv(SHEET_URL)
+        return sorted(df['Funcionario'].dropna().unique().tolist())
+    except:
         return []
 
-def gerar_escala(nomes):
-    ano_atual = datetime.now().year
-    data_inicio = datetime(ano_atual, 1, 1)
-    data_fim = datetime(ano_atual, 12, 31)
-    dias = pd.date_range(data_inicio, data_fim, freq='B')
+def gerar_escala_sequencial(nomes):
+    ano = 2026
+    dias = pd.date_range(datetime(ano, 1, 1), datetime(ano, 12, 31), freq='B')
     
     escala = []
-    idx_geral = 0 
+    # Controle de qual reunião cada pessoa deve fazer em seguida (0, 1 ou 2)
+    proxima_reuniao_index = {nome: 0 for nome in nomes}
     participacao_semanal = {}
+    
+    # Ponteiro para circular entre os nomes
+    idx_nome = 0
 
     for dia in dias:
         semana = dia.isocalendar()[1]
@@ -84,98 +64,85 @@ def gerar_escala(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
-        reunioes_do_dia = ["Flash Manhã"]
-        if dia_semana in [1, 3]: 
-            reunioes_do_dia.append("DOR")
-        else: 
-            reunioes_do_dia.append("Flash Tarde")
+        # Reuniões disponíveis no dia
+        reunioes_dia = ["Flash Manhã"]
+        if dia_semana in [1, 3]: reunioes_dia.append("DOR")
+        else: reunioes_dia.append("Flash Tarde")
 
-        for r in reunioes_do_dia:
+        for r_tipo in reunioes_dia:
             tentativas = 0
             while tentativas < len(nomes):
-                nome_atual = nomes[idx_geral % len(nomes)]
-                ja_apresentou = nome_atual in participacao_semanal[semana]
-                bloqueio_dor = (r == "DOR" and nome_atual in ["Dani", "Rafael"])
+                nome_candidato = nomes[idx_nome % len(nomes)]
+                tipo_devido = SEQUENCIA_REUNIOES[proxima_reuniao_index[nome_candidato]]
                 
-                if ja_apresentou or bloqueio_dor:
-                    idx_geral += 1
+                # Regras: Deve ser o tipo certo de reunião E não pode ter apresentado na semana
+                pode_apresentar = (tipo_devido == r_tipo) and (nome_candidato not in participacao_semanal[semana])
+                
+                # Trava extra para nomes específicos no DOR
+                if r_tipo == "DOR" and nome_candidato in ["Dani", "Rafael"]:
+                    pode_apresentar = False
+
+                if pode_apresentar:
+                    escala.append({
+                        "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
+                        "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+                        "Reunião": r_tipo, "Apresentador": nome_candidato,
+                        "Backup": MAPA_BACKUPS.get(nome_candidato, "N/A")
+                    })
+                    participacao_semanal[semana].add(nome_candidato)
+                    # Avança a sequência dessa pessoa
+                    proxima_reuniao_index[nome_candidato] = (proxima_reuniao_index[nome_candidato] + 1) % 3
+                    idx_nome += 1
+                    break
+                else:
+                    idx_nome += 1
                     tentativas += 1
-                    continue
-                
-                escala.append({
-                    "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
-                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                    "Reunião": r, "Apresentador": nome_atual,
-                    "Backup": MAPA_BACKUPS.get(nome_atual, "N/A")
-                })
-                participacao_semanal[semana].add(nome_atual)
-                idx_geral += 1
-                break
+                    
     return pd.DataFrame(escala)
 
-if check_login():
-    nomes_lista = carregar_nomes()
-    if nomes_lista:
-        df_total = gerar_escala(nomes_lista)
-        
-        # --- ACESSIBILIDADE ---
-        if "voz" not in st.session_state:
-            st.session_state.voz = False
-        st.sidebar.title("Configurações")
-        if st.sidebar.button("🔊 Acessibilidade (Voz)"):
-            st.session_state.voz = not st.session_state.voz
-            st.rerun()
-            
-        if st.session_state.voz:
-            components.html("""
-                <script>
-                const synth = window.speechSynthesis;
-                function speak(text) {
-                    if (synth.speaking) { synth.cancel(); }
-                    const utter = new SpeechSynthesisUtterance(text);
-                    utter.lang = 'pt-BR';
-                    synth.speak(utter);
-                }
-                parent.document.querySelectorAll('.card-click').forEach(card => {
-                    card.addEventListener('mouseenter', () => speak(card.getAttribute('data-audio')));
-                });
-                </script>
-            """, height=0)
+# --- INTERFACE ---
+nomes_lista = carregar_nomes()
+if nomes_lista:
+    df_total = gerar_escala_sequencial(nomes_lista)
 
-        st.title("🚀 MMD | Dashboard de Apresentações")
+    st.title("🚀 MMD | Dashboard de Apresentações")
+    
+    # Filtro Individual
+    filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_lista)
+    
+    if filtro_nome != "Todos":
+        st.subheader(f"📅 Escala Individual: {filtro_nome}")
+        df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
         
-        opcoes_nomes = ["Todos"] + nomes_lista
-        filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
+        # Gerar coluna de link Outlook
+        df_pessoal["Agenda Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x['Data'], x['Reunião'], x['Apresentador']), axis=1)
         
-        if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Escala Individual: {filtro_nome}")
-            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Backup"]], use_container_width=True, hide_index=True)
-            st.markdown("---")
+        # Exibição da Tabela com Backup na 4ª coluna e Botão na 5ª
+        st.dataframe(
+            df_pessoal[["Data", "Dia", "Reunião", "Backup", "Agenda Outlook"]],
+            column_config={
+                "Agenda Outlook": st.column_config.LinkColumn("📅 Agendar", display_text="Adicionar ao Outlook")
+            },
+            use_container_width=True, hide_index=True
+        )
+        st.divider()
 
-        st.subheader("🗓️ Cronograma Semanal")
-        semana_atual = datetime.now().isocalendar()[1]
-        lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
-        
-        df_semana = df_total[df_total["Semana"] == semana_busca]
-
-        for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]:
-                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    audio_text = f"Reunião: {row['Reunião']}. Apresentador: {row['Apresentador']}. Backup: {row['Backup']}."
-                    st.markdown(f"""
-                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                        <div>
-                            <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 17px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
-                            <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
-                        </div>
-                        <div style="margin-top: 10px;">
-                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 6px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+    # Cards Semanais
+    st.subheader("🗓️ Cronograma Semanal")
+    semana_sel = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
+    
+    df_semana = df_total[df_total["Semana"] == semana_sel]
+    for data_label, group in df_semana.groupby("Data", sort=False):
+        st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
+        cols = st.columns(len(group))
+        for i, (_, row) in enumerate(group.iterrows()):
+            with cols[i]:
+                link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
+                st.markdown(f"""
+                <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px;">
+                    <b style="color: #31333F;">{row['Reunião']}</b><br>
+                    <span style="font-size: 18px; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
+                    <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span><br><br>
+                    <a href="{link}" target="_blank" style="text-decoration: none; color: white; background-color: #0078d4; padding: 5px 10px; border-radius: 5px; font-size: 11px; font-weight: bold;">📅 AGENDAR</a>
+                </div>
+                """, unsafe_allow_html=True)
