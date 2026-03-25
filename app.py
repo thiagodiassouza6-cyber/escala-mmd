@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib.parse
+import streamlit.components.v1 as components
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
@@ -60,7 +61,7 @@ def gerar_escala(nomes):
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
     escala = []
-    idx_geral = 0 # Fila única para garantir a vez de todos
+    idx_geral = 0 
     participacao_semanal = {}
 
     for dia in dias:
@@ -70,11 +71,10 @@ def gerar_escala(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
-        # Define quais reuniões ocorrem no dia
         reunioes_do_dia = ["Flash Manhã"]
-        if dia_semana in [1, 3]: # Terça e Quinta
+        if dia_semana in [1, 3]: 
             reunioes_do_dia.append("DOR")
-        else: # Segunda, Quarta e Sexta
+        else: 
             reunioes_do_dia.append("Flash Tarde")
 
         for r in reunioes_do_dia:
@@ -82,9 +82,6 @@ def gerar_escala(nomes):
             while tentativas < len(nomes):
                 nome_atual = nomes[idx_geral % len(nomes)]
                 
-                # REGRAS DE BLOQUEIO:
-                # 1. Não pode apresentar 2x na mesma semana
-                # 2. Dani e Rafael não fazem DOR
                 ja_apresentou = nome_atual in participacao_semanal[semana]
                 bloqueio_dor = (r == "DOR" and nome_atual in ["Dani", "Rafael"])
                 
@@ -93,7 +90,6 @@ def gerar_escala(nomes):
                     tentativas += 1
                     continue
                 
-                # Se passou nas regras, escala:
                 escala.append({
                     "Semana": semana,
                     "Data": dia.strftime("%d/%m/%Y"),
@@ -112,40 +108,9 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        st.title("🚀 MMD | Dashboard de Apresentações")
-        
-        opcoes_nomes = ["Todos"] + nomes_lista
-        filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
-        
-        if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Minhas Apresentações: {filtro_nome}")
-            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
-            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]], use_container_width=True, hide_index=True)
-            st.markdown("---")
-
-        st.subheader("🗓️ Cronograma por Semana")
-        semana_atual = datetime.now().isocalendar()[1]
-        lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
-        
-        df_semana = df_total[df_total["Semana"] == semana_busca]
-
-        for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]:
-                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    st.markdown(f"""
-                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <b style="font-size: 14px;">{row['Reunião']}</b><br>
-                            <span style="font-size: 18px; font-weight: bold;">🏆 {row['Apresentador']}</span>
-                        </div>
-                        <div style="margin-top: 10px;">
-                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 5px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold;">📧 AGENDAR NO OUTLOOK</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            st.write("")
+        # --- ACESSIBILIDADE (VOLTOU!) ---
+        if "voz" not in st.session_state:
+            st.session_state.voz = False
+            
+        st.sidebar.title("Acessibilidade")
+        if st.sidebar.button
