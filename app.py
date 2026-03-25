@@ -190,4 +190,38 @@ if check_login():
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Google
+                    "Google": st.column_config.LinkColumn("📅 Agenda"),
+                    "Outlook": st.column_config.LinkColumn("📧 Teams")
+                }
+            )
+            st.markdown("---")
+
+        st.subheader("🗓️ Cronograma por Semana")
+        semana_atual = datetime.now().isocalendar()[1]
+        lista_semanas = sorted(df_total["Semana"].unique())
+        semana_busca = st.select_slider("Arraste para ver a escala:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        
+        df_semana = df_total[df_total["Semana"] == semana_busca]
+
+        for data_label, group in df_semana.groupby("Data", sort=False):
+            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
+            cols = st.columns(len(group))
+            for i, (_, row) in enumerate(group.iterrows()):
+                with cols[i]:
+                    g_link = criar_link_google(row['Data'], row['Reunião'], row['Apresentador'])
+                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
+                    audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
+                    
+                    st.markdown(f"""
+                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                        <div>
+                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
+                            <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
+                        </div>
+                        <div style="display: flex; gap: 5px; margin-top: 10px;">
+                            <a href="{g_link}" target="_blank" style="flex: 1; text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">GOOGLE</a>
+                            <a href="{o_link}" target="_blank" style="flex: 1; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">OUTLOOK</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.write("")
