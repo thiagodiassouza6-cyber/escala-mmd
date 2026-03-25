@@ -3,15 +3,15 @@ import pandas as pd
 from datetime import datetime
 import urllib.parse
 
-# --- CONFIGURAÇÃO ---
-st.set_page_config(page_title="MMD | Dashboard de Apresentações", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="MMD | Dashboard de Escalas", layout="wide")
 
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
-# Backup fixo conforme última imagem
+# Mapa de Backups (Restaurado conforme imagem original)
 MAPA_BACKUPS = {
-    "Abigail": "Sonia", "Amanda": "Mijal", "Anna": "Soledad", 
+    "Abigail": "Sonia", "Amanda": "Mijal", "Anna Laura": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Enrique": "Jazmin", 
     "Debora": "Bruna", "Diana": "Julia", "Faiha": "Bianca S.", 
@@ -22,7 +22,6 @@ MAPA_BACKUPS = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
-# Sequência obrigatória
 CICLO_REUNIOES = ["Flash Manhã", "Flash Tarde", "DOR"]
 
 def criar_link_outlook(row):
@@ -45,13 +44,12 @@ def carregar_dados():
     except:
         return []
 
-def gerar_escala_final(nomes):
+def gerar_escala_total(nomes):
     dias_uteis = pd.date_range(start="2026-01-01", end="2026-12-31", freq='B')
     escala = []
     status_pessoa = {nome: 0 for nome in nomes}
     participacao_semanal = {}
-    
-    lista_circular = nomes.copy()
+    lista_nomes = nomes.copy()
 
     for dia in dias_uteis:
         semana = dia.isocalendar()[1]
@@ -61,16 +59,18 @@ def gerar_escala_final(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
-        # Define reuniões do dia
-        reunioes_dia = ["Flash Manhã"]
-        if dia.weekday() in [1, 3]: reunioes_dia.append("DOR")
-        else: reunioes_dia.append("Flash Tarde")
+        # Define as reuniões do dia: Flash Manhã + (DOR ou Flash Tarde)
+        reunioes_do_dia = ["Flash Manhã"]
+        if dia.weekday() in [1, 3]: # Terça e Quinta
+            reunioes_do_dia.append("DOR")
+        else: # Segunda, Quarta e Sexta
+            reunioes_do_dia.append("Flash Tarde")
 
-        for r_tipo in reunioes_dia:
+        for r_tipo in reunioes_do_dia:
             selecionado = None
-            for _ in range(len(lista_circular)):
-                candidato = lista_circular.pop(0)
-                lista_circular.append(candidato)
+            for _ in range(len(lista_nomes)):
+                candidato = lista_nomes.pop(0)
+                lista_nomes.append(candidato)
                 
                 tipo_devido = CICLO_REUNIOES[status_pessoa[candidato]]
                 ja_foi_na_semana = candidato in participacao_semanal[semana]
@@ -93,17 +93,16 @@ def gerar_escala_final(nomes):
 # --- SIDEBAR (ACESSIBILIDADE) ---
 with st.sidebar:
     st.header("Acessibilidade")
-    if st.button("🔊 Ativar/Desativar Voz"):
-        st.info("O recurso de voz está ativo para leitura dos cards.")
+    st.button("🔊 Ativar/Desativar Voz")
 
 # --- UI PRINCIPAL ---
-lista_nomes = carregar_dados()
-if lista_nomes:
-    df_escala = gerar_escala_final(lista_nomes)
+nomes_base = carregar_dados()
+if nomes_base:
+    df_escala = gerar_escala_total(nomes_base)
     st.title("🚀 MMD | Dashboard de Apresentações")
 
-    # Busca Individual
-    nome_busca = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + lista_nomes)
+    # Busca
+    nome_busca = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_base)
     if nome_busca != "Todos":
         df_ind = df_escala[df_escala["Apresentador"] == nome_busca].copy()
         df_ind["Agenda Outlook"] = df_ind.apply(criar_link_outlook, axis=1)
@@ -112,23 +111,25 @@ if lista_nomes:
                      use_container_width=True, hide_index=True)
         st.divider()
 
-    # Cards Semanais
+    # Visão Semanal
     st.subheader("🗓️ Visão Semanal")
-    sem_atual = datetime.now().isocalendar()[1]
-    escolha_sem = st.select_slider("Arraste para ver a escala:", options=sorted(df_escala["Semana"].unique()), value=sem_atual)
+    escolha_sem = st.select_slider("Arraste para ver a escala:", options=sorted(df_escala["Semana"].unique()), value=datetime.now().isocalendar()[1])
     
-    df_sem_view = df_escala[df_escala["Semana"] == escolha_sem]
-    for dia_str, gp in df_sem_view.groupby("Data", sort=False):
+    df_view = df_escala[df_escala["Semana"] == escolha_sem]
+    
+    # Renderização por dia para garantir todos os cards
+    for dia_str, gp in df_view.groupby("Data", sort=False):
         st.markdown(f"**{gp['Dia'].iloc[0]} - {dia_str}**")
-        col_cards = st.columns(2) # Garante que Manhã e Tarde/DOR apareçam lado a lado
+        # Criamos colunas dinâmicas baseadas na quantidade de reuniões do dia
+        col_cards = st.columns(len(gp)) 
         for i, (_, r) in enumerate(gp.iterrows()):
-            with col_cards[i % 2]:
+            with col_cards[i]:
                 link_out = criar_link_outlook(r)
                 st.markdown(f"""
-                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #ff4b4b; min-height: 150px; box-shadow: 1px 1px 4px rgba(0,0,0,0.1);">
-                    <small style="color: #666;">{r['Reunião']}</small><br>
+                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #ff4b4b; min-height: 160px; box-shadow: 1px 1px 4px rgba(0,0,0,0.1); margin-bottom: 10px;">
+                    <small style="color: #666; font-weight: bold;">{r['Reunião']}</small><br>
                     <b style="font-size: 16px;">🏆 {r['Apresentador']}</b><br>
                     <span style="font-size: 12px; color: #555;">🔄 Backup: {r['Backup']}</span><br><br>
-                    <a href="{link_out}" target="_blank" style="text-decoration: none; background-color: #0078d4; color: white; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold;">📅 AGENDAR NO OUTLOOK</a>
+                    <a href="{link_out}" target="_blank" style="text-decoration: none; background-color: white; color: #0078d4; border: 1px solid #0078d4; padding: 5px 15px; border-radius: 4px; font-size: 10px; font-weight: bold; text-align: center; display: block;">AGENDAR NO OUTLOOK</a>
                 </div>
                 """, unsafe_allow_html=True)
