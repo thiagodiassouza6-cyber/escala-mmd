@@ -33,22 +33,27 @@ def check_login():
     return True
 
 def criar_link_agenda(data_str, reuniao, apresentador):
-    data_obj = datetime.strptime(data_str, "%d/%m/%Y")
-    hora = "094500" if "Manhã" in reuniao else "150000"
-    data_formatada = data_obj.strftime("%Y%m%d")
-    inicio = f"{data_formatada}T{hora}"
-    fim_obj = datetime.strptime(inicio, "%Y%m%dT%H%M%S") + timedelta(minutes=30)
-    fim = fim_obj.strftime("%Y%m%dT%H%M%S")
-    titulo = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
-    detalhes = urllib.parse.quote(f"Apresentador: {apresentador}\nLembrete de 60 min.")
-    return f"https://www.google.com/calendar/render?action=TEMPLATE&text={titulo}&dates={inicio}/{fim}&details={detalhes}"
+    try:
+        data_obj = datetime.strptime(data_str, "%d/%m/%Y")
+        hora = "094500" if "Manhã" in reuniao else "150000"
+        data_formatada = data_obj.strftime("%Y%m%d")
+        inicio = f"{data_formatada}T{hora}"
+        fim_obj = datetime.strptime(inicio, "%Y%m%dT%H%M%S") + timedelta(minutes=30)
+        fim = fim_obj.strftime("%Y%m%dT%H%M%S")
+        titulo = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
+        detalhes = urllib.parse.quote(f"Apresentador: {apresentador}\nLembrete de 60 min.")
+        return f"https://www.google.com/calendar/render?action=TEMPLATE&text={titulo}&dates={inicio}/{fim}&details={detalhes}"
+    except:
+        return "#"
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60)
 def carregar_nomes():
     try:
         df_sheets = pd.read_csv(SHEET_URL)
+        # Ajustado para o nome exato da sua coluna na planilha
         return sorted(df_sheets['Funcionários'].dropna().unique().tolist())
-    except:
+    except Exception as e:
+        st.error(f"Erro ao carregar planilha: {e}")
         return []
 
 def gerar_escala(nomes):
@@ -65,6 +70,7 @@ def gerar_escala(nomes):
         for r in reunioes:
             while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
+                # Regra para evitar Dani ou Rafael no DOR
                 if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
                     idx_nome += 1
                     continue
@@ -87,14 +93,15 @@ if check_login():
         
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador (Lista Anual):", opcoes_nomes)
-        st.sidebar.button("🔄 Atualizar Dados", on_click=st.cache_data.clear)
+        
+        if st.sidebar.button("🔄 Atualizar Dados"):
+            st.cache_data.clear()
+            st.rerun()
 
         if filtro_nome != "Todos":
             st.markdown("---")
             st.subheader(f"📅 Cronograma Anual: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            
-            # Adicionando coluna de link clicável na tabela
             df_pessoal["Agenda"] = df_pessoal.apply(lambda x: criar_link_agenda(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             
             st.dataframe(
@@ -103,28 +110,26 @@ if check_login():
                 hide_index=True,
                 column_config={"Agenda": st.column_config.LinkColumn("📅 Add Google")}
             )
-            st.info(f"Total de apresentações para {filtro_nome}: {len(df_pessoal)}")
-        
         else:
             st.markdown("---")
             st.subheader("🗓️ Cronograma por Semana")
             semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
             df_semana = df_total[df_total["Semana"] == semana_busca]
 
-            # Cards Alinhados
+            # Cards com tratamento de erro
             for data_label, group in df_semana.groupby("Data", sort=False):
                 st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
                 cols = st.columns(len(group))
                 for i, (_, row) in enumerate(group.iterrows()):
                     with cols[i]:
-                        # CSS para forçar altura e alinhamento
-                        st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; height: 160px; border-left: 5px solid #ff4b4b; display: flex; flex-direction: column; justify-content: space-between;">
-                            <div>
-                                <b style="color: #31333F; font-size: 1.1em;">{row['Reunião']}</b><br>
-                                <span style="color: #555;">🏆 {row['Apresentador']}</span>
-                            </div>
-                            <a href="{criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])}" target="_blank" style="text-decoration: none; background-color: white; color: #ff4b4b; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; text-align: center; border: 1px solid #ff4b4b;">🔔 Agendar</a>
+                        link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
+                        # HTML simplificado para evitar quebras
+                        card_html = f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; border-left: 5px solid #ff4b4b; min-height: 120px;">
+                            <b style="font-size: 14px;">{row['Reunião']}</b><br>
+                            <span style="font-size: 13px;">🏆 {row['Apresentador']}</span><br><br>
+                            <a href="{link}" target="_blank" style="font-size: 12px; color: #ff4b4b; text-decoration: none; border: 1px solid #ff4b4b; padding: 2px 5px; border-radius: 4px;">🔔 Agenda</a>
                         </div>
-                        """, unsafe_allow_html=True)
-                st.write("") # Espaçador entre dias
+                        """
+                        st.markdown(card_html, unsafe_allow_html=True)
+                st.write("")
