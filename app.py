@@ -69,39 +69,60 @@ def carregar_nomes():
         return []
 
 def gerar_escala(nomes):
-    # LÓGICA INFINITA: Detecta o ano atual do sistema
     ano_atual = datetime.now().year
     data_inicio = datetime(ano_atual, 1, 1)
     data_fim = datetime(ano_atual, 12, 31)
-    
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     escala = []
-    idx_nome = 0
+    
+    # NOVA LÓGICA: Duas filas independentes
+    idx_flash = 0
+    idx_dor = 0
     
     for dia in dias:
         semana = dia.isocalendar()[1]
         dia_semana = dia.weekday()
         
-        # Define as reuniões do dia
-        reunioes = ["Flash Manhã", "DOR"] if dia_semana in [1, 3] else ["Flash Manhã", "Flash Tarde"]
+        # 1. Slot Manhã (Sempre Flash)
+        nome_flash_manha = nomes[idx_flash % len(nomes)]
+        escala.append({
+            "Semana": semana,
+            "Data": dia.strftime("%d/%m/%Y"),
+            "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+            "Reunião": "Flash Manhã",
+            "Apresentador": nome_flash_manha
+        })
+        idx_flash += 1
         
-        for r in reunioes:
+        # 2. Slot Tarde
+        if dia_semana in [1, 3]: # Terça e Quinta é DOR
             while True:
-                nome_atual = nomes[idx_nome % len(nomes)]
-                # Regra específica para o DOR
-                if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
-                    idx_nome += 1
+                nome_dor = nomes[idx_dor % len(nomes)]
+                # Pula Dani e Rafael no DOR
+                if nome_dor in ["Dani", "Rafael"]:
+                    idx_dor += 1
                     continue
                 
                 escala.append({
                     "Semana": semana,
                     "Data": dia.strftime("%d/%m/%Y"),
                     "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                    "Reunião": r,
-                    "Apresentador": nome_atual
+                    "Reunião": "DOR",
+                    "Apresentador": nome_dor
                 })
-                idx_nome += 1
+                idx_dor += 1
                 break
+        else: # Segunda, Quarta e Sexta é Flash Tarde
+            nome_flash_tarde = nomes[idx_flash % len(nomes)]
+            escala.append({
+                "Semana": semana,
+                "Data": dia.strftime("%d/%m/%Y"),
+                "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+                "Reunião": "Flash Tarde",
+                "Apresentador": nome_flash_tarde
+            })
+            idx_flash += 1
+            
     return pd.DataFrame(escala)
 
 if check_login():
@@ -169,44 +190,4 @@ if check_login():
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Google": st.column_config.LinkColumn("📅 Agenda"),
-                    "Outlook": st.column_config.LinkColumn("📧 Teams")
-                }
-            )
-            st.markdown("---")
-
-        st.subheader("🗓️ Cronograma por Semana")
-        # Slider dinâmico baseado nas semanas do ano atual
-        semana_atual = datetime.now().isocalendar()[1]
-        lista_semanas = sorted(df_total["Semana"].unique())
-        
-        semana_busca = st.select_slider(
-            "Arraste para ver a escala:", 
-            options=lista_semanas, 
-            value=semana_atual if semana_atual in lista_semanas else lista_semanas[0]
-        )
-        
-        df_semana = df_total[df_total["Semana"] == semana_busca]
-
-        for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]:
-                    g_link = criar_link_google(row['Data'], row['Reunião'], row['Apresentador'])
-                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
-                    
-                    st.markdown(f"""
-                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                        <div>
-                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
-                        </div>
-                        <div style="display: flex; gap: 5px; margin-top: 10px;">
-                            <a href="{g_link}" target="_blank" style="flex: 1; text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">GOOGLE</a>
-                            <a href="{o_link}" target="_blank" style="flex: 1; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">OUTLOOK</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            st.write("")
+                    "Google
