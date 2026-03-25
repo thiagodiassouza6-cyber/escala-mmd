@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib.parse
+import streamlit.components.v1 as components
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
-# Link da Planilha (ID extraído do seu link)
+# Link da Planilha
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
@@ -50,7 +51,6 @@ def criar_link_agenda(data_str, reuniao, apresentador):
 def carregar_nomes():
     try:
         df_sheets = pd.read_csv(SHEET_URL)
-        # AJUSTADO: Nome exato da coluna na sua planilha
         return sorted(df_sheets['Funcionario'].dropna().unique().tolist())
     except Exception as e:
         st.error(f"Erro ao carregar coluna 'Funcionario': {e}")
@@ -88,42 +88,63 @@ if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
+        
+        # --- BOTÃO DE ACESSIBILIDADE ---
+        if "acessibilidade" not in st.session_state:
+            st.session_state.acessibilidade = False
+            
+        st.sidebar.title("Acessibilidade")
+        if st.sidebar.button("🔊 Ativar/Desativar Leitura por Voz"):
+            st.session_state.acessibilidade = not st.session_state.acessibilidade
+            st.rerun()
+            
+        if st.session_state.acessibilidade:
+            st.sidebar.success("Leitura ativada! Passe o mouse nos cards.")
+            # Script JavaScript para leitura por voz
+            components.html("""
+                <script>
+                const synth = window.speechSynthesis;
+                function speak(text) {
+                    if (synth.speaking) { synth.cancel(); }
+                    const utterThis = new SpeechSynthesisUtterance(text);
+                    utterThis.lang = 'pt-BR';
+                    synth.speak(utterThis);
+                }
+
+                parent.document.querySelectorAll('.card-leitura').forEach(item => {
+                    item.addEventListener('mouseenter', event => {
+                        const texto = item.getAttribute('data-audio');
+                        speak(texto);
+                    });
+                });
+                </script>
+            """, height=0)
+
         st.title("🚀 MMD | Dashboard de Apresentações")
         
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador (Lista Anual):", opcoes_nomes)
         
-        if filtro_nome != "Todos":
-            st.markdown("---")
-            st.subheader(f"📅 Cronograma Anual: {filtro_nome}")
-            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            df_pessoal["Agenda"] = df_pessoal.apply(lambda x: criar_link_agenda(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
-            
-            st.dataframe(
-                df_pessoal[["Data", "Dia", "Reunião", "Semana", "Agenda"]],
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Agenda": st.column_config.LinkColumn("📅 Add Google")}
-            )
-        else:
-            st.markdown("---")
-            st.subheader("🗓️ Cronograma por Semana")
-            semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
-            df_semana = df_total[df_total["Semana"] == semana_busca]
+        st.markdown("---")
+        st.subheader("🗓️ Cronograma por Semana")
+        semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
+        df_semana = df_total[df_total["Semana"] == semana_busca]
 
-            for data_label, group in df_semana.groupby("Data", sort=False):
-                st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
-                cols = st.columns(len(group))
-                for i, (_, row) in enumerate(group.iterrows()):
-                    with cols[i]:
-                        link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
-                        st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;">
-                            <div>
-                                <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                                <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
-                            </div>
-                            <a href="{link}" target="_blank" style="text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 3px 8px; border-radius: 5px; font-size: 12px; text-align: center; margin-top: 10px; background-color: white;">🔔 Agendar</a>
+        for data_label, group in df_semana.groupby("Data", sort=False):
+            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
+            cols = st.columns(len(group))
+            for i, (_, row) in enumerate(group.iterrows()):
+                with cols[i]:
+                    link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
+                    texto_leitura = f"Reunião {row['Reunião']}. Apresentador {row['Apresentador']}."
+                    
+                    st.markdown(f"""
+                    <div class="card-leitura" data-audio="{texto_leitura}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
+                            <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
                         </div>
-                        """, unsafe_allow_html=True)
-                st.write("")
+                        <a href="{link}" target="_blank" style="text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 3px 8px; border-radius: 5px; font-size: 12px; text-align: center; margin-top: 10px; background-color: white;">🔔 Agendar</a>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.write("")
