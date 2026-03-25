@@ -64,70 +64,66 @@ def carregar_nomes():
         st.error(f"Erro ao carregar dados: {e}")
         return []
 
-def gerar_escala_justa(nomes):
+def gerar_escala_final(nomes):
     ano_atual = datetime.now().year
     data_inicio = datetime(ano_atual, 1, 1)
     data_fim = datetime(ano_atual, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
-    escala = []
-    idx_fila = 0 # Ponteiro da fila única
+    # Fila A: Para todas as Flashes (Manhã e Tarde)
+    fila_flash = nomes.copy()
+    # Fila B: Exclusiva para DOR (Sem Dani e Rafael)
+    fila_dor = [n for n in nomes if n not in ["Dani", "Rafael"]]
     
-    # Controle para evitar que a mesma pessoa apresente 2x na semana
-    participacao_semanal = {} 
+    idx_f = 0
+    idx_d = 0
+    escala = []
 
     for dia in dias:
-        semana = dia.isocalendar()[1]
-        dia_semana = dia.weekday()
-        if semana not in participacao_semanal:
-            participacao_semanal[semana] = set()
+        dia_semana = dia.weekday() # 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex
+        data_s = dia.strftime("%d/%m/%Y")
+        sem = dia.isocalendar()[1]
+        dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
 
-        # Define as reuniões do dia
-        reunioes_dia = ["Flash Manhã"]
-        if dia_semana in [1, 3]: reunioes_dia.append("DOR")
-        else: reunioes_dia.append("Flash Tarde")
+        # --- MANHÃ (Todos os dias tem Flash Manhã) ---
+        ap_m = fila_flash[idx_f % len(fila_flash)]
+        escala.append({
+            "Semana": sem, "Data": data_s, "Dia": dia_nome,
+            "Reunião": "Flash Manhã", "Apresentador": ap_m,
+            "Backup": MAPA_BACKUPS.get(ap_m, "N/A"),
+            "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)
+        })
+        idx_f += 1
 
-        for r_tipo in reunioes_dia:
-            tentativas = 0
-            encontrou = False
+        # --- TARDE (Alternado) ---
+        if dia_semana in [1, 3]: # Terça e Quinta = DOR
+            ap_d = fila_dor[idx_d % len(fila_dor)]
+            # Evita a mesma pessoa apresentar manhã e tarde no mesmo dia
+            if ap_d == ap_m:
+                idx_d += 1
+                ap_d = fila_dor[idx_d % len(fila_dor)]
             
-            while tentativas < len(nomes):
-                candidato = nomes[idx_fila % len(nomes)]
+            escala.append({
+                "Semana": sem, "Data": data_s, "Dia": dia_nome,
+                "Reunião": "DOR", "Apresentador": ap_d,
+                "Backup": MAPA_BACKUPS.get(ap_d, "N/A"),
+                "Link": criar_link_outlook(data_s, "DOR", ap_d)
+            })
+            idx_d += 1
+            
+        elif dia_semana in [0, 2, 4]: # Segunda, Quarta e Sexta = Flash Tarde
+            ap_t = fila_flash[idx_f % len(fila_flash)]
+            if ap_t == ap_m:
+                idx_f += 1
+                ap_t = fila_flash[idx_f % len(fila_flash)]
                 
-                # Regra 1: Não pode repetir na mesma semana
-                ja_foi_na_semana = candidato in participacao_semanal[semana]
-                # Regra 2: Dani e Rafael não fazem DOR
-                bloqueio_especial = (r_tipo == "DOR" and candidato in ["Dani", "Rafael"])
-
-                if not ja_foi_na_semana and not bloqueio_especial:
-                    escala.append({
-                        "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
-                        "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                        "Reunião": r_tipo, "Apresentador": candidato,
-                        "Backup": MAPA_BACKUPS.get(candidato, "N/A"),
-                        "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
-                    })
-                    participacao_semanal[semana].add(candidato)
-                    idx_fila += 1 # Move para o próximo da fila
-                    encontrou = True
-                    break
-                else:
-                    # Se ele não pode (por ser DOR ou já ter ido na semana), 
-                    # tentamos o próximo da fila para ESTA vaga, mas não avançamos o idx_fila global
-                    # para que o pulado seja o primeiro da lista na próxima vaga disponível.
-                    idx_fila += 1
-                    tentativas += 1
-            
-            # Se a fila travar (ex: todos já foram na semana), libera a repetição
-            if not encontrou:
-                candidato = nomes[idx_fila % len(nomes)]
-                escala.append({
-                    "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
-                    "Reunião": r_tipo, "Apresentador": candidato,
-                    "Backup": MAPA_BACKUPS.get(candidato, "N/A"),
-                    "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
-                })
-                idx_fila += 1
+            escala.append({
+                "Semana": sem, "Data": data_s, "Dia": dia_nome,
+                "Reunião": "Flash Tarde", "Apresentador": ap_t,
+                "Backup": MAPA_BACKUPS.get(ap_t, "N/A"),
+                "Link": criar_link_outlook(data_s, "Flash Tarde", ap_t)
+            })
+            idx_f += 1
 
     return pd.DataFrame(escala)
 
@@ -149,7 +145,7 @@ def renderizar_card(row):
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
-        df_total = gerar_escala_justa(nomes_lista)
+        df_total = gerar_escala_final(nomes_lista)
         
         # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state: st.session_state.voz = False
@@ -178,7 +174,7 @@ if check_login():
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTRO POR APRESENTADOR ---
+        # --- FILTRO INDIVIDUAL (TABELA) ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
@@ -186,34 +182,33 @@ if check_login():
             st.markdown(f"### 📅 Lista de Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
             st.data_editor(
-                df_pessoal[["Data", "Reunião", "Apresentador", "Backup", "Link"]],
+                df_pessoal[["Data", "Dia", "Reunião", "Backup", "Link"]],
                 column_config={
                     "Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR"),
-                    "Data": st.column_config.TextColumn("Data"),
                 },
                 hide_index=True, use_container_width=True, disabled=True
             )
             st.markdown("---")
 
-        # --- CRONOGRAMA SEMANAL ---
+        # --- VISUALIZAÇÃO SEMANAL ---
         st.subheader("🗓️ Visualização por Semana")
-        semana_atual = datetime.now().isocalendar()[1]
-        lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        sem_atual = datetime.now().isocalendar()[1]
+        lista_s = sorted(df_total["Semana"].unique())
+        sem_busca = st.select_slider("Selecione a Semana:", options=lista_s, value=sem_atual if sem_atual in lista_s else lista_s[0])
         
-        df_semana = df_total[df_total["Semana"] == semana_busca]
-        for data_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0] if 'Dia' in group.columns else ''} - {data_label}**")
+        df_semana = df_total[df_total["Semana"] == sem_busca]
+        for d_label, group in df_semana.groupby("Data", sort=False):
+            st.markdown(f"**{group['Dia'].iloc[0]} - {d_label}**")
             cols = st.columns(len(group))
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
                     renderizar_card(row)
 
-        # --- ESCALA COMPLETA ---
+        # --- RODAPÉ: TODOS OS CARDS ---
         st.markdown("---")
-        with st.expander("📂 Ver Escala Completa (Todos os Dias)"):
-            for data_label, group in df_total.groupby("Data", sort=False):
-                st.write(f"Data: {data_label}")
+        with st.expander("📂 Ver Escala Completa (Cards)"):
+            for d_label, group in df_total.groupby("Data", sort=False):
+                st.write(f"Data: {d_label}")
                 cols_full = st.columns(5)
                 for i, (_, row) in enumerate(group.iterrows()):
                     with cols_full[i % 5]:
