@@ -113,4 +113,68 @@ if check_login():
             st.session_state.voz = False
             
         st.sidebar.title("Acessibilidade")
-        if st.sidebar.button
+        if st.sidebar.button("🔊 Ativar/Desativar Voz"):
+            st.session_state.voz = not st.session_state.voz
+            st.rerun()
+            
+        if st.session_state.voz:
+            st.sidebar.success("Leitura de tela ativada!")
+            components.html("""
+                <script>
+                const synth = window.speechSynthesis;
+                function speak(text) {
+                    if (synth.speaking) { synth.cancel(); }
+                    const utter = new SpeechSynthesisUtterance(text);
+                    utter.lang = 'pt-BR';
+                    utter.rate = 1.0; 
+                    synth.speak(utter);
+                }
+                
+                parent.document.querySelectorAll('.card-click').forEach(card => {
+                    card.addEventListener('mouseenter', () => {
+                        speak(card.getAttribute('data-audio'));
+                    });
+                });
+                </script>
+            """, height=0)
+
+        st.title("🚀 MMD | Dashboard de Apresentações")
+        
+        opcoes_nomes = ["Todos"] + nomes_lista
+        filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
+        
+        if filtro_nome != "Todos":
+            st.markdown(f"### 📅 Minhas Apresentações no Ano: {filtro_nome}")
+            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
+            df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
+            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]], use_container_width=True, hide_index=True)
+            st.markdown("---")
+
+        st.subheader("🗓️ Cronograma por Semana")
+        semana_atual = datetime.now().isocalendar()[1]
+        lista_semanas = sorted(df_total["Semana"].unique())
+        semana_busca = st.select_slider("Arraste para ver a escala:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        
+        df_semana = df_total[df_total["Semana"] == semana_busca]
+
+        for data_label, group in df_semana.groupby("Data", sort=False):
+            st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
+            cols = st.columns(len(group))
+            for i, (_, row) in enumerate(group.iterrows()):
+                with cols[i]:
+                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
+                    audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
+                    st.markdown(f"""
+                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                        <div>
+                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
+                            <span style="font-size: 17px; color: #333; font-weight: bold;">
+                                <span style="font-size: 20px;">🏆</span> {row['Apresentador']}
+                            </span>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.write("")
