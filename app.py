@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import urllib.parse
 import streamlit.components.v1 as components
 
@@ -72,12 +72,11 @@ def gerar_escala_sequencial(nomes):
     
     escala = []
     idx_nome = 0
-    participacao_semanal = {} # {semana: set(nomes_que_ja_foram)}
+    participacao_semanal = {}
 
     for dia in dias:
         semana = dia.isocalendar()[1]
         dia_semana = dia.weekday()
-        
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
@@ -86,14 +85,10 @@ def gerar_escala_sequencial(nomes):
         else: reunioes_dia.append("Flash Tarde")
 
         for r_tipo in reunioes_dia:
-            # Tenta encontrar o próximo da fila que não apresentou nesta semana
             encontrou = False
             for _ in range(len(nomes)):
                 candidato = nomes[idx_nome % len(nomes)]
-                
-                # Regra 1: Não pode repetir na mesma semana
                 ja_foi_na_semana = candidato in participacao_semanal[semana]
-                # Regra 2: Dani e Rafael não fazem DOR
                 bloqueio_especial = (r_tipo == "DOR" and candidato in ["Dani", "Rafael"])
 
                 if not ja_foi_na_semana and not bloqueio_especial:
@@ -101,31 +96,30 @@ def gerar_escala_sequencial(nomes):
                         "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
                         "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
                         "Reunião": r_tipo, "Apresentador": candidato,
-                        "Backup": MAPA_BACKUPS.get(candidato, "N/A")
+                        "Backup": MAPA_BACKUPS.get(candidato, "N/A"),
+                        "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
                     })
                     participacao_semanal[semana].add(candidato)
                     idx_nome += 1
                     encontrou = True
                     break
                 else:
-                    # Se não puder esse, pula para o próximo da fila global
                     idx_nome += 1
             
-            # Caso extremo: Se todos já apresentaram na semana (fila pequena), limpa a semana e deixa repetir
             if not encontrou:
                 candidato = nomes[idx_nome % len(nomes)]
                 escala.append({
                     "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
                     "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
                     "Reunião": r_tipo, "Apresentador": candidato,
-                    "Backup": MAPA_BACKUPS.get(candidato, "N/A")
+                    "Backup": MAPA_BACKUPS.get(candidato, "N/A"),
+                    "Link": criar_link_outlook(dia.strftime("%d/%m/%Y"), r_tipo, candidato)
                 })
                 idx_nome += 1
 
     return pd.DataFrame(escala)
 
 def renderizar_card(row):
-    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
     audio_text = f"Reunião: {row['Reunião']}. Apresentador: {row['Apresentador']}. Backup: {row['Backup']}."
     st.markdown(f"""
     <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
@@ -135,7 +129,7 @@ def renderizar_card(row):
             <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
         </div>
         <div style="margin-top: 10px;">
-            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold; width: 100%;">📅 AGENDAR OUTLOOK</a>
+            <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold; width: 100%;">📅 AGENDAR OUTLOOK</a>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -172,21 +166,36 @@ if check_login():
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTRO POR APRESENTADOR ---
+        # --- FILTRO POR APRESENTADOR (FORMATO LISTA) ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Suas Próximas Apresentações: {filtro_nome}")
+            st.markdown(f"### 📅 Lista de Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            p_cols = st.columns(4)
-            for idx, (_, row) in enumerate(df_pessoal.head(8).iterrows()):
-                with p_cols[idx % 4]:
-                    st.write(f"**{row['Data']}**")
-                    renderizar_card(row)
+            
+            # Formatando a tabela para o formato antigo
+            df_display = df_pessoal[["Data", "Reunião", "Apresentador", "Backup", "Link"]]
+            
+            st.data_editor(
+                df_display,
+                column_config={
+                    "Link": st.column_config.LinkColumn(
+                        "Agenda Outlook",
+                        help="Clique para adicionar ao seu calendário",
+                        validate="^https://.*",
+                        display_text="📅 AGENDAR"
+                    ),
+                    "Data": st.column_config.TextColumn("Data"),
+                    "Reunião": st.column_config.TextColumn("Reunião"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                disabled=True # Impede edição, funciona apenas como visualização
+            )
             st.markdown("---")
 
-        # --- CRONOGRAMA SEMANAL ---
+        # --- CRONOGRAMA SEMANAL (MANTIDO EM CARDS PARA VISUALIZAÇÃO RÁPIDA) ---
         st.subheader("🗓️ Visualização por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
@@ -200,7 +209,7 @@ if check_login():
                 with cols[i]:
                     renderizar_card(row)
 
-        # --- ESCALA COMPLETA ---
+        # --- RODAPÉ: TODOS OS CARDS ---
         st.markdown("---")
         with st.expander("📂 Ver Escala Completa (Todos os Dias)"):
             for data_label, group in df_total.groupby("Data", sort=False):
