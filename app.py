@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 import streamlit.components.v1 as components
 
@@ -17,7 +17,7 @@ MAPA_BACKUPS = {
     "Abigail": "Sonia", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Enrique": "Jazmin", 
-    "Debora": "Bruna", "Diana": "Julia", "Faiha": "創造", 
+    "Debora": "Bruna", "Diana": "Julia", "Faiha": "Bianca S.", 
     "Florencia": "Diana", "Gisele": "Thiago", "Honorato": "Bruno", 
     "Jazmin": "Abigail", "Jesus": "Luca", "Julia": "Honorato", 
     "Livia": "Faiha", "Luca": "Enrique", "Mijal": "Livia", 
@@ -64,55 +64,64 @@ def carregar_nomes():
         st.error(f"Erro ao carregar dados: {e}")
         return []
 
-def gerar_escala(nomes):
+def gerar_escala_sequencial(nomes):
     ano_atual = datetime.now().year
     data_inicio = datetime(ano_atual, 1, 1)
     data_fim = datetime(ano_atual, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
     escala = []
-    # Dicionário para controlar a próxima reunião de cada pessoa
-    # 0: Flash Manhã, 1: Flash Tarde, 2: DOR
-    sequencia_pessoal = {nome: 0 for nome in nomes}
     idx_nome = 0
+    participacao_semanal = {} # {semana: set(nomes_que_ja_foram)}
 
     for dia in dias:
         semana = dia.isocalendar()[1]
         dia_semana = dia.weekday()
+        
+        if semana not in participacao_semanal:
+            participacao_semanal[semana] = set()
+
         reunioes_dia = ["Flash Manhã"]
         if dia_semana in [1, 3]: reunioes_dia.append("DOR")
         else: reunioes_dia.append("Flash Tarde")
 
         for r_tipo in reunioes_dia:
-            tentativas = 0
-            while tentativas < len(nomes):
+            # Tenta encontrar o próximo da fila que não apresentou nesta semana
+            encontrou = False
+            for _ in range(len(nomes)):
                 candidato = nomes[idx_nome % len(nomes)]
-                proxima_meta = sequencia_pessoal[candidato]
                 
-                # Mapeamento do índice para o nome da reunião
-                tipos = {0: "Flash Manhã", 1: "Flash Tarde", 2: "DOR"}
-                reuniao_desejada = tipos[proxima_meta]
+                # Regra 1: Não pode repetir na mesma semana
+                ja_foi_na_semana = candidato in participacao_semanal[semana]
+                # Regra 2: Dani e Rafael não fazem DOR
+                bloqueio_especial = (r_tipo == "DOR" and candidato in ["Dani", "Rafael"])
 
-                # Regra: Dani e Rafael não fazem DOR
-                if reuniao_desejada == "DOR" and candidato in ["Dani", "Rafael"]:
-                    sequencia_pessoal[candidato] = 0 # Volta pra manhã
-                    reuniao_desejada = "Flash Manhã"
-
-                # Verifica se a reunião que o candidato "precisa" fazer é a que está disponível agora
-                if reuniao_desejada == r_tipo:
+                if not ja_foi_na_semana and not bloqueio_especial:
                     escala.append({
                         "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
                         "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
                         "Reunião": r_tipo, "Apresentador": candidato,
                         "Backup": MAPA_BACKUPS.get(candidato, "N/A")
                     })
-                    # Atualiza sequência do candidato: 0->1, 1->2, 2->0
-                    sequencia_pessoal[candidato] = (sequencia_pessoal[candidato] + 1) % 3
+                    participacao_semanal[semana].add(candidato)
                     idx_nome += 1
+                    encontrou = True
                     break
                 else:
+                    # Se não puder esse, pula para o próximo da fila global
                     idx_nome += 1
-                    tentativas += 1
+            
+            # Caso extremo: Se todos já apresentaram na semana (fila pequena), limpa a semana e deixa repetir
+            if not encontrou:
+                candidato = nomes[idx_nome % len(nomes)]
+                escala.append({
+                    "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
+                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+                    "Reunião": r_tipo, "Apresentador": candidato,
+                    "Backup": MAPA_BACKUPS.get(candidato, "N/A")
+                })
+                idx_nome += 1
+
     return pd.DataFrame(escala)
 
 def renderizar_card(row):
@@ -134,9 +143,9 @@ def renderizar_card(row):
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
-        df_total = gerar_escala(nomes_lista)
+        df_total = gerar_escala_sequencial(nomes_lista)
         
-        # --- ACESSIBILIDADE (JS) ---
+        # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
         if st.sidebar.button("🔊 Acessibilidade (Voz)"):
@@ -170,8 +179,6 @@ if check_login():
         if filtro_nome != "Todos":
             st.markdown(f"### 📅 Suas Próximas Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            
-            # Exibição em Cards para o filtro individual também
             p_cols = st.columns(4)
             for idx, (_, row) in enumerate(df_pessoal.head(8).iterrows()):
                 with p_cols[idx % 4]:
@@ -179,7 +186,7 @@ if check_login():
                     renderizar_card(row)
             st.markdown("---")
 
-        # --- CRONOGRAMA SEMANAL (SLIDER) ---
+        # --- CRONOGRAMA SEMANAL ---
         st.subheader("🗓️ Visualização por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
@@ -193,7 +200,7 @@ if check_login():
                 with cols[i]:
                     renderizar_card(row)
 
-        # --- RODAPÉ: TODOS OS CARDS ---
+        # --- ESCALA COMPLETA ---
         st.markdown("---")
         with st.expander("📂 Ver Escala Completa (Todos os Dias)"):
             for data_label, group in df_total.groupby("Data", sort=False):
