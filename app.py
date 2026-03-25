@@ -15,6 +15,20 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
+# --- MAPEAMENTO DE BACKUPS ---
+# Baseado na lista enviada
+MAPA_BACKUPS = {
+    "Amanda": "Mijal", "Anna Laura": "Soledad", "Ariel": "Rafael",
+    "Bianca M.": "Ariel", "Bianca S.": "Amanda", "Bruna": "Anna Laura",
+    "Bruno": "Bianca M.", "Cristian": "Debora", "Enrique": "Sonia",
+    "Debora": "Bruna", "Diana": "Julia", "Faiha": "Bianca S.",
+    "Florencia": "Diana", "Gisele": "Thiago", "Honorato": "Bruno",
+    "Jesus": "Luca", "Julia": "Honorato", "Livia": "Faiha",
+    "Luca": "Enrique", "Mijal": "Livia", "Rafael": "Florencia",
+    "Renan": "Cristian", "Sonia": "Jesus", "Soledad": "Gisele",
+    "Thiago": "Renan"
+}
+
 def check_login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -81,7 +95,6 @@ def gerar_escala(nomes):
             tentativas = 0
             while tentativas < len(nomes):
                 nome_atual = nomes[idx_geral % len(nomes)]
-                
                 ja_apresentou = nome_atual in participacao_semanal[semana]
                 bloqueio_dor = (r == "DOR" and nome_atual in ["Dani", "Rafael"])
                 
@@ -95,12 +108,12 @@ def gerar_escala(nomes):
                     "Data": dia.strftime("%d/%m/%Y"),
                     "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
                     "Reunião": r,
-                    "Apresentador": nome_atual
+                    "Apresentador": nome_atual,
+                    "Backup": MAPA_BACKUPS.get(nome_atual, "N/A")
                 })
                 participacao_semanal[semana].add(nome_atual)
                 idx_geral += 1
                 break
-            
     return pd.DataFrame(escala)
 
 if check_login():
@@ -108,10 +121,9 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        # --- ACESSIBILIDADE (VOLTOU!) ---
+        # --- ACESSIBILIDADE ---
         if "voz" not in st.session_state:
             st.session_state.voz = False
-            
         st.sidebar.title("Acessibilidade")
         if st.sidebar.button("🔊 Ativar/Desativar Voz"):
             st.session_state.voz = not st.session_state.voz
@@ -126,14 +138,10 @@ if check_login():
                     if (synth.speaking) { synth.cancel(); }
                     const utter = new SpeechSynthesisUtterance(text);
                     utter.lang = 'pt-BR';
-                    utter.rate = 1.0; 
                     synth.speak(utter);
                 }
-                
                 parent.document.querySelectorAll('.card-click').forEach(card => {
-                    card.addEventListener('mouseenter', () => {
-                        speak(card.getAttribute('data-audio'));
-                    });
+                    card.addEventListener('mouseenter', () => speak(card.getAttribute('data-audio')));
                 });
                 </script>
             """, height=0)
@@ -144,16 +152,15 @@ if check_login():
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Minhas Apresentações no Ano: {filtro_nome}")
+            st.markdown(f"### 📅 Minhas Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
-            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]], use_container_width=True, hide_index=True)
+            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Backup"]], use_container_width=True, hide_index=True)
             st.markdown("---")
 
         st.subheader("🗓️ Cronograma por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Arraste para ver a escala:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        semana_busca = st.select_slider("Arraste a escala:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
         
         df_semana = df_total[df_total["Semana"] == semana_busca]
 
@@ -163,18 +170,16 @@ if check_login():
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
                     o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
+                    audio_text = f"{row['Reunião']}. Apresentador {row['Apresentador']}. Backup {row['Backup']}."
                     st.markdown(f"""
-                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
                         <div>
-                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 17px; color: #333; font-weight: bold;">
-                                <span style="font-size: 20px;">🏆</span> {row['Apresentador']}
-                            </span>
+                            <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
+                            <span style="font-size: 17px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
+                            <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
                         </div>
-                        <div style="margin-top: 15px;">
-                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
+                        <div style="margin-top: 10px;">
+                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 6px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold;">📧 AGENDAR NO OUTLOOK</a>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-            st.write("")
