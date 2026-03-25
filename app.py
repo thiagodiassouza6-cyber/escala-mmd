@@ -7,21 +7,17 @@ import streamlit.components.v1 as components
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
-# Link da Planilha
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
-# Credenciais
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
-# --- MAPEAMENTO DE BACKUPS ATUALIZADO (FINAL) ---
-# Baseado na última imagem enviada
 MAPA_BACKUPS = {
     "Abigail": "Sonia", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Enrique": "Jazmin", 
-    "Debora": "Bruna", "Diana": "Julia", "Faiha": "Bianca S.", 
+    "Debora": "Bruna", "Diana": "Julia", "Faiha": "創造", 
     "Florencia": "Diana", "Gisele": "Thiago", "Honorato": "Bruno", 
     "Jazmin": "Abigail", "Jesus": "Luca", "Julia": "Honorato", 
     "Livia": "Faiha", "Luca": "Enrique", "Mijal": "Livia", 
@@ -75,52 +71,73 @@ def gerar_escala(nomes):
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
     escala = []
-    idx_geral = 0 
-    participacao_semanal = {}
+    # Dicionário para controlar a próxima reunião de cada pessoa
+    # 0: Flash Manhã, 1: Flash Tarde, 2: DOR
+    sequencia_pessoal = {nome: 0 for nome in nomes}
+    idx_nome = 0
 
     for dia in dias:
         semana = dia.isocalendar()[1]
         dia_semana = dia.weekday()
-        if semana not in participacao_semanal:
-            participacao_semanal[semana] = set()
+        reunioes_dia = ["Flash Manhã"]
+        if dia_semana in [1, 3]: reunioes_dia.append("DOR")
+        else: reunioes_dia.append("Flash Tarde")
 
-        reunioes_do_dia = ["Flash Manhã"]
-        if dia_semana in [1, 3]: 
-            reunioes_do_dia.append("DOR")
-        else: 
-            reunioes_do_dia.append("Flash Tarde")
-
-        for r in reunioes_do_dia:
+        for r_tipo in reunioes_dia:
             tentativas = 0
             while tentativas < len(nomes):
-                nome_atual = nomes[idx_geral % len(nomes)]
-                ja_apresentou = nome_atual in participacao_semanal[semana]
-                bloqueio_dor = (r == "DOR" and nome_atual in ["Dani", "Rafael"])
+                candidato = nomes[idx_nome % len(nomes)]
+                proxima_meta = sequencia_pessoal[candidato]
                 
-                if ja_apresentou or bloqueio_dor:
-                    idx_geral += 1
+                # Mapeamento do índice para o nome da reunião
+                tipos = {0: "Flash Manhã", 1: "Flash Tarde", 2: "DOR"}
+                reuniao_desejada = tipos[proxima_meta]
+
+                # Regra: Dani e Rafael não fazem DOR
+                if reuniao_desejada == "DOR" and candidato in ["Dani", "Rafael"]:
+                    sequencia_pessoal[candidato] = 0 # Volta pra manhã
+                    reuniao_desejada = "Flash Manhã"
+
+                # Verifica se a reunião que o candidato "precisa" fazer é a que está disponível agora
+                if reuniao_desejada == r_tipo:
+                    escala.append({
+                        "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
+                        "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
+                        "Reunião": r_tipo, "Apresentador": candidato,
+                        "Backup": MAPA_BACKUPS.get(candidato, "N/A")
+                    })
+                    # Atualiza sequência do candidato: 0->1, 1->2, 2->0
+                    sequencia_pessoal[candidato] = (sequencia_pessoal[candidato] + 1) % 3
+                    idx_nome += 1
+                    break
+                else:
+                    idx_nome += 1
                     tentativas += 1
-                    continue
-                
-                escala.append({
-                    "Semana": semana, "Data": dia.strftime("%d/%m/%Y"),
-                    "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                    "Reunião": r, "Apresentador": nome_atual,
-                    "Backup": MAPA_BACKUPS.get(nome_atual, "N/A")
-                })
-                participacao_semanal[semana].add(nome_atual)
-                idx_geral += 1
-                break
     return pd.DataFrame(escala)
+
+def renderizar_card(row):
+    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
+    audio_text = f"Reunião: {row['Reunião']}. Apresentador: {row['Apresentador']}. Backup: {row['Backup']}."
+    st.markdown(f"""
+    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+        <div>
+            <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
+            <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
+            <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
+        </div>
+        <div style="margin-top: 10px;">
+            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold; width: 100%;">📅 AGENDAR OUTLOOK</a>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        # --- ACESSIBILIDADE ---
-        if "voz" not in st.session_state:
-            st.session_state.voz = False
+        # --- ACESSIBILIDADE (JS) ---
+        if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
         if st.sidebar.button("🔊 Acessibilidade (Voz)"):
             st.session_state.voz = not st.session_state.voz
@@ -136,46 +153,52 @@ if check_login():
                     utter.lang = 'pt-BR';
                     synth.speak(utter);
                 }
-                parent.document.querySelectorAll('.card-click').forEach(card => {
-                    card.addEventListener('mouseenter', () => speak(card.getAttribute('data-audio')));
-                });
+                setTimeout(() => {
+                    parent.document.querySelectorAll('.card-click').forEach(card => {
+                        card.addEventListener('mouseenter', () => speak(card.getAttribute('data-audio')));
+                    });
+                }, 1000);
                 </script>
             """, height=0)
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
+        # --- FILTRO POR APRESENTADOR ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Escala Individual: {filtro_nome}")
+            st.markdown(f"### 📅 Suas Próximas Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Backup"]], use_container_width=True, hide_index=True)
+            
+            # Exibição em Cards para o filtro individual também
+            p_cols = st.columns(4)
+            for idx, (_, row) in enumerate(df_pessoal.head(8).iterrows()):
+                with p_cols[idx % 4]:
+                    st.write(f"**{row['Data']}**")
+                    renderizar_card(row)
             st.markdown("---")
 
-        st.subheader("🗓️ Cronograma Semanal")
+        # --- CRONOGRAMA SEMANAL (SLIDER) ---
+        st.subheader("🗓️ Visualização por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        semana_busca = st.select_slider("Arraste para ver outras semanas:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
         
         df_semana = df_total[df_total["Semana"] == semana_busca]
-
         for data_label, group in df_semana.groupby("Data", sort=False):
             st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
             cols = st.columns(len(group))
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
-                    o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    audio_text = f"Reunião: {row['Reunião']}. Apresentador: {row['Apresentador']}. Backup: {row['Backup']}."
-                    st.markdown(f"""
-                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                        <div>
-                            <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 17px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
-                            <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
-                        </div>
-                        <div style="margin-top: 10px;">
-                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 6px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    renderizar_card(row)
+
+        # --- RODAPÉ: TODOS OS CARDS ---
+        st.markdown("---")
+        with st.expander("📂 Ver Escala Completa (Todos os Dias)"):
+            for data_label, group in df_total.groupby("Data", sort=False):
+                st.write(f"Data: {data_label}")
+                cols_full = st.columns(5)
+                for i, (_, row) in enumerate(group.iterrows()):
+                    with cols_full[i % 5]:
+                        renderizar_card(row)
