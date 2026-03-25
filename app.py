@@ -22,6 +22,7 @@ MAPA_BACKUPS = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
+# Sequência obrigatória por pessoa
 CICLO_REUNIOES = ["Flash Manhã", "Flash Tarde", "DOR"]
 
 def criar_link_outlook(row):
@@ -59,11 +60,14 @@ def gerar_escala_total(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
-        # Define as reuniões do dia: Flash Manhã + (DOR ou Flash Tarde)
+        # REGRAS DE REUNIÃO POR DIA
+        # Flash Manhã: Todos os dias
+        # Flash Tarde: Seg, Qua, Sex
+        # DOR: Ter, Qui
         reunioes_do_dia = ["Flash Manhã"]
-        if dia.weekday() in [1, 3]: # Terça e Quinta
+        if dia.weekday() in [1, 3]: # Terça (1) e Quinta (3)
             reunioes_do_dia.append("DOR")
-        else: # Segunda, Quarta e Sexta
+        else: # Segunda (0), Quarta (2) e Sexta (4)
             reunioes_do_dia.append("Flash Tarde")
 
         for r_tipo in reunioes_do_dia:
@@ -117,12 +121,14 @@ if nomes_base:
     
     df_view = df_escala[df_escala["Semana"] == escolha_sem]
     
-    # Renderização por dia para garantir todos os cards
     for dia_str, gp in df_view.groupby("Data", sort=False):
         st.markdown(f"**{gp['Dia'].iloc[0]} - {dia_str}**")
-        # Criamos colunas dinâmicas baseadas na quantidade de reuniões do dia
-        col_cards = st.columns(len(gp)) 
-        for i, (_, r) in enumerate(gp.iterrows()):
+        col_cards = st.columns(2) # Sempre duas colunas para Flash Manhã e Flash Tarde/DOR
+        
+        # Ordenamos para garantir que Flash Manhã seja sempre o primeiro card à esquerda
+        gp_sorted = gp.sort_values(by="Reunião", ascending=False) 
+        
+        for i, (_, r) in enumerate(gp_sorted.iterrows()):
             with col_cards[i]:
                 link_out = criar_link_outlook(r)
                 st.markdown(f"""
@@ -130,6 +136,6 @@ if nomes_base:
                     <small style="color: #666; font-weight: bold;">{r['Reunião']}</small><br>
                     <b style="font-size: 16px;">🏆 {r['Apresentador']}</b><br>
                     <span style="font-size: 12px; color: #555;">🔄 Backup: {r['Backup']}</span><br><br>
-                    <a href="{link_out}" target="_blank" style="text-decoration: none; background-color: white; color: #0078d4; border: 1px solid #0078d4; padding: 5px 15px; border-radius: 4px; font-size: 10px; font-weight: bold; text-align: center; display: block;">AGENDAR NO OUTLOOK</a>
+                    <a href="{link_out}" target="_blank" style="text-decoration: none; background-color: white; color: #0078d4; border: 1px solid #0078d4; padding: 5px 15px; border-radius: 4px; font-size: 10px; font-weight: bold; text-align: center; display: block;">📅 AGENDAR NO OUTLOOK</a>
                 </div>
                 """, unsafe_allow_html=True)
