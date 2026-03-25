@@ -33,20 +33,6 @@ def check_login():
         return False
     return True
 
-def criar_link_google(data_str, reuniao, apresentador):
-    try:
-        data_obj = datetime.strptime(data_str, "%d/%m/%Y")
-        hora = "094500" if "Manhã" in reuniao else "150000"
-        data_formatada = data_obj.strftime("%Y%m%d")
-        inicio = f"{data_formatada}T{hora}"
-        fim_obj = datetime.strptime(inicio, "%Y%m%dT%H%M%S") + timedelta(minutes=30)
-        fim = fim_obj.strftime("%Y%m%dT%H%M%S")
-        titulo = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
-        detalhes = urllib.parse.quote(f"Apresentador: {apresentador}")
-        return f"https://www.google.com/calendar/render?action=TEMPLATE&text={titulo}&dates={inicio}/{fim}&details={detalhes}"
-    except:
-        return "#"
-
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
@@ -73,17 +59,23 @@ def gerar_escala(nomes):
     data_inicio = datetime(ano_atual, 1, 1)
     data_fim = datetime(ano_atual, 12, 31)
     dias = pd.date_range(data_inicio, data_fim, freq='B')
-    escala = []
     
-    # NOVA LÓGICA: Duas filas independentes
+    escala = []
     idx_flash = 0
     idx_dor = 0
     
+    # Dicionário para rastrear quem já apresentou na semana
+    # Chave: número da semana, Valor: set de nomes
+    participacao_semanal = {}
+
     for dia in dias:
         semana = dia.isocalendar()[1]
         dia_semana = dia.weekday()
         
-        # 1. Slot Manhã (Sempre Flash)
+        if semana not in participacao_semanal:
+            participacao_semanal[semana] = set()
+
+        # 1. SLOT MANHÃ (Flash Manhã)
         nome_flash_manha = nomes[idx_flash % len(nomes)]
         escala.append({
             "Semana": semana,
@@ -92,14 +84,15 @@ def gerar_escala(nomes):
             "Reunião": "Flash Manhã",
             "Apresentador": nome_flash_manha
         })
+        participacao_semanal[semana].add(nome_flash_manha)
         idx_flash += 1
         
-        # 2. Slot Tarde
-        if dia_semana in [1, 3]: # Terça e Quinta é DOR
+        # 2. SLOT TARDE
+        if dia_semana in [1, 3]: # Terça e Quinta (DOR)
             while True:
                 nome_dor = nomes[idx_dor % len(nomes)]
-                # Pula Dani e Rafael no DOR
-                if nome_dor in ["Dani", "Rafael"]:
+                # REGRA: Não pode ser Dani/Rafael E não pode ter apresentado na semana
+                if nome_dor in ["Dani", "Rafael"] or nome_dor in participacao_semanal[semana]:
                     idx_dor += 1
                     continue
                 
@@ -110,9 +103,10 @@ def gerar_escala(nomes):
                     "Reunião": "DOR",
                     "Apresentador": nome_dor
                 })
+                participacao_semanal[semana].add(nome_dor)
                 idx_dor += 1
                 break
-        else: # Segunda, Quarta e Sexta é Flash Tarde
+        else: # Segunda, Quarta e Sexta (Flash Tarde)
             nome_flash_tarde = nomes[idx_flash % len(nomes)]
             escala.append({
                 "Semana": semana,
@@ -121,6 +115,7 @@ def gerar_escala(nomes):
                 "Reunião": "Flash Tarde",
                 "Apresentador": nome_flash_tarde
             })
+            participacao_semanal[semana].add(nome_flash_tarde)
             idx_flash += 1
             
     return pd.DataFrame(escala)
@@ -135,45 +130,10 @@ if check_login():
             st.session_state.voz = False
             
         st.sidebar.title("Acessibilidade")
-        if st.sidebar.button("🔊 Ativar/Desativar Voz"):
+        if st.sidebar.button("🔊 Voz On/Off"):
             st.session_state.voz = not st.session_state.voz
             st.rerun()
             
-        if st.session_state.voz:
-            st.sidebar.success("Leitura ativada!")
-            components.html("""
-                <script>
-                const synth = window.speechSynthesis;
-                function speak(text) {
-                    if (synth.speaking) { synth.cancel(); }
-                    const utter = new SpeechSynthesisUtterance(text);
-                    utter.lang = 'pt-BR';
-                    utter.rate = 1.0; 
-                    synth.speak(utter);
-                }
-                
-                parent.document.querySelectorAll('.card-click').forEach(card => {
-                    card.addEventListener('mouseenter', () => {
-                        speak(card.getAttribute('data-audio'));
-                    });
-                });
-
-                parent.document.querySelectorAll('table tr').forEach(row => {
-                    row.addEventListener('mouseenter', () => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length >= 3) {
-                            const data = cells[0].innerText;
-                            const dia = cells[1].innerText;
-                            const reuniao = cells[2].innerText;
-                            const inputElem = parent.document.querySelector('input[aria-label="🔍 Buscar por Apresentador:"]');
-                            const apresentador = inputElem ? inputElem.value : "Selecionado";
-                            speak(`${data}. ${dia}. ${reuniao}. Apresentador ${apresentador}.`);
-                        }
-                    });
-                });
-                </script>
-            """, height=0)
-
         st.title("🚀 MMD | Dashboard de Apresentações")
         
         opcoes_nomes = ["Todos"] + nomes_lista
@@ -182,24 +142,20 @@ if check_login():
         if filtro_nome != "Todos":
             st.markdown(f"### 📅 Minhas Apresentações no Ano: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            df_pessoal["Google"] = df_pessoal.apply(lambda x: criar_link_google(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
             
             st.dataframe(
-                df_pessoal[["Data", "Dia", "Reunião", "Semana", "Google", "Outlook"]],
+                df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]],
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "Google": st.column_config.LinkColumn("📅 Agenda"),
-                    "Outlook": st.column_config.LinkColumn("📧 Teams")
-                }
+                column_config={"Outlook": st.column_config.LinkColumn("📧 Agendar")}
             )
             st.markdown("---")
 
         st.subheader("🗓️ Cronograma por Semana")
         semana_atual = datetime.now().isocalendar()[1]
         lista_semanas = sorted(df_total["Semana"].unique())
-        semana_busca = st.select_slider("Arraste para ver a escala:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
+        semana_busca = st.select_slider("Selecione a Semana:", options=lista_semanas, value=semana_atual if semana_atual in lista_semanas else lista_semanas[0])
         
         df_semana = df_total[df_total["Semana"] == semana_busca]
 
@@ -208,19 +164,17 @@ if check_login():
             cols = st.columns(len(group))
             for i, (_, row) in enumerate(group.iterrows()):
                 with cols[i]:
-                    g_link = criar_link_google(row['Data'], row['Reunião'], row['Apresentador'])
                     o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
-                    audio_text = f"{row['Data']}. {row['Dia']}. {row['Reunião']}. Apresentador {row['Apresentador']}."
-                    
                     st.markdown(f"""
-                    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
                         <div>
                             <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 14px; color: #555;">🏆 {row['Apresentador']}</span>
+                            <span style="font-size: 17px; color: #333; font-weight: bold;">
+                                <span style="font-size: 20px;">🏆</span> {row['Apresentador']}
+                            </span>
                         </div>
-                        <div style="display: flex; gap: 5px; margin-top: 10px;">
-                            <a href="{g_link}" target="_blank" style="flex: 1; text-decoration: none; color: #ff4b4b; border: 1px solid #ff4b4b; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">GOOGLE</a>
-                            <a href="{o_link}" target="_blank" style="flex: 1; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 4px; border-radius: 5px; font-size: 10px; text-align: center; background-color: white; font-weight: bold;">OUTLOOK</a>
+                        <div style="margin-top: 15px;">
+                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
