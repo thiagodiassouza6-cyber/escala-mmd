@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
-# Link da Planilha (ID extraído do seu link original)
+# Link da Planilha
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
@@ -63,7 +63,6 @@ def criar_link_outlook(data_str, reuniao, apresentador):
 def carregar_nomes():
     try:
         df_sheets = pd.read_csv(SHEET_URL)
-        # Coluna conforme sua última atualização na planilha
         return sorted(df_sheets['Funcionario'].dropna().unique().tolist())
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
@@ -132,19 +131,36 @@ if check_login():
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # Filtro e Slider
+        # Filtro de Apresentador
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
-        st.markdown("---")
+        # --- SEÇÃO FILTRO INDIVIDUAL (TODAS AS DATAS DO ANO) ---
+        if filtro_nome != "Todos":
+            st.markdown(f"### 📅 Minhas Apresentações no Ano: {filtro_nome}")
+            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
+            
+            # Criamos os links para a tabela
+            df_pessoal["Google"] = df_pessoal.apply(lambda x: criar_link_google(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
+            df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
+            
+            st.dataframe(
+                df_pessoal[["Data", "Dia", "Reunião", "Semana", "Google", "Outlook"]],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Google": st.column_config.LinkColumn("📅 Agenda"),
+                    "Outlook": st.column_config.LinkColumn("📧 Teams")
+                }
+            )
+            st.markdown("---")
+
+        # --- SEÇÃO CRONOGRAMA GERAL (MANTER O LAYOUT QUE VOCÊ AMOU) ---
         st.subheader("🗓️ Cronograma por Semana")
         semana_busca = st.select_slider("Arraste para ver a escala:", options=sorted(df_total["Semana"].unique()), value=13)
         
         df_semana = df_total[df_total["Semana"] == semana_busca]
-        if filtro_nome != "Todos":
-            df_semana = df_semana[df_semana["Apresentador"] == filtro_nome]
 
-        # Renderização dos Cards
         for data_label, group in df_semana.groupby("Data", sort=False):
             st.markdown(f"**{group['Dia'].iloc[0]} - {data_label}**")
             cols = st.columns(len(group))
