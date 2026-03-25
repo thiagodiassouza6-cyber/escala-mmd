@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import urllib.parse
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
 
 # CONFIGURAÇÃO DO GOOGLE SHEETS
-# (Mantenho o seu ID para não quebrar a conexão)
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
@@ -32,14 +32,28 @@ def check_login():
         return False
     return True
 
+def criar_link_agenda(data_str, reuniao, apresentador):
+    # Converte data e define horário
+    data_obj = datetime.strptime(data_str, "%d/%m/%Y")
+    hora = "094500" if "Manhã" in reuniao else "150000"
+    
+    data_formatada = data_obj.strftime("%Y%m%d")
+    inicio = f"{data_formatada}T{hora}"
+    # Define término 30 min depois
+    fim_obj = datetime.strptime(inicio, "%Y%m%dT%H%M%S") + timedelta(minutes=30)
+    fim = fim_obj.strftime("%Y%m%dT%H%M%S")
+    
+    titulo = urllib.parse.quote(f"🔔 Apresentação MMD: {reuniao}")
+    detalhes = urllib.parse.quote(f"Apresentador: {apresentador}\nLembrete configurado para 60 minutos antes.")
+    
+    return f"https://www.google.com/calendar/render?action=TEMPLATE&text={titulo}&dates={inicio}/{fim}&details={detalhes}"
+
 @st.cache_data(ttl=600)
 def carregar_nomes():
     try:
-        # Lê a planilha e busca a coluna 'Funcionário'
         df_sheets = pd.read_csv(SHEET_URL)
         return df_sheets['Funcionário'].dropna().tolist()
-    except Exception as e:
-        st.error("Erro ao ler a planilha. Verifique se o nome da coluna é 'Funcionário'.")
+    except:
         return []
 
 def gerar_escala(nomes):
@@ -52,21 +66,13 @@ def gerar_escala(nomes):
     for dia in dias:
         semana = dia.isocalendar()[1]
         if semana < 13: continue
-        
         dia_semana = dia.weekday()
         
-        # DEFINIÇÃO DAS REUNIÕES DO DIA (Lógica Corrigida)
-        if dia_semana in [1, 3]: # Terça (1) e Quinta (3)
-            # Apenas 2 reuniões: Manhã e DOR
-            reunioes = ["Flash Manhã", "DOR"]
-        else: # Segunda (0), Quarta (2) e Sexta (4)
-            # Apenas 2 reuniões: Manhã e Tarde
-            reunioes = ["Flash Manhã", "Flash Tarde"]
+        reunioes = ["Flash Manhã", "DOR"] if dia_semana in [1, 3] else ["Flash Manhã", "Flash Tarde"]
             
         for r in reunioes:
             while True:
                 nome_atual = nomes[idx_nome % len(nomes)]
-                # Regra DOR: Dani e Rafael não apresentam
                 if r == "DOR" and nome_atual in ["Dani", "Rafael"]:
                     idx_nome += 1
                     continue
@@ -80,41 +86,31 @@ def gerar_escala(nomes):
                 })
                 idx_nome += 1
                 break
-                
     return pd.DataFrame(escala)
 
 if check_login():
     nomes_dinamicos = carregar_nomes()
-    
     if nomes_dinamicos:
         df = gerar_escala(nomes_dinamicos)
-        # Hoje é 25/03/2026, semana 13
         semana_atual_num = 13 
         
         st.title("🚀 MMD | Dashboard de Apresentações")
-        st.sidebar.button("🔄 Atualizar Dados da Planilha", on_click=st.cache_data.clear)
+        st.sidebar.button("🔄 Atualizar Planilha", on_click=st.cache_data.clear)
         
-        st.markdown("---")
         st.subheader(f"📌 Destaque da Semana {semana_atual_num}")
-        
         df_semana = df[df["Semana"] == semana_atual_num]
         
         if not df_semana.empty:
-            # Exibição organizada por data
             for data_label, group in df_semana.groupby("Data", sort=False):
                 st.markdown(f"#### 📅 {group['Dia'].iloc[0]} ({data_label})")
                 cols = st.columns(len(group))
                 for i, (_, row) in enumerate(group.iterrows()):
                     with cols[i]:
                         st.info(f"**{row['Reunião']}**\n\n🏆 {row['Apresentador']}")
+                        link = criar_link_agenda(row['Data'], row['Reunião'], row['Apresentador'])
+                        st.markdown(f"[🔔 Agendar Lembrete]({link})")
         
         st.markdown("---")
-        st.subheader("🗓️ Consulta de Outras Semanas")
-        semana_busca = st.select_slider("Arraste para ver o cronograma:", options=sorted(df["Semana"].unique()), value=semana_atual_num)
-        
-        # Filtra e exibe a tabela da semana selecionada
-        df_final = df[df["Semana"] == semana_busca].drop(columns=["Semana"])
-        st.dataframe(df_final, use_container_width=True, hide_index=True)
-        
-    else:
-        st.warning("Aguardando lista de nomes da planilha... Verifique se a célula A1 é 'Funcionário'.")
+        st.subheader("🗓️ Cronograma Completo")
+        semana_busca = st.select_slider("Selecione a semana:", options=sorted(df["Semana"].unique()), value=semana_atual_num)
+        st.dataframe(df[df["Semana"] == semana_busca].drop(columns=["Semana"]), use_container_width=True, hide_index=True)
