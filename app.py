@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib.parse
-import streamlit.components.v1 as components
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
@@ -61,11 +60,7 @@ def gerar_escala(nomes):
     dias = pd.date_range(data_inicio, data_fim, freq='B')
     
     escala = []
-    idx_flash = 0
-    idx_dor = 0
-    
-    # Dicionário para rastrear quem já apresentou na semana
-    # Chave: número da semana, Valor: set de nomes
+    idx_geral = 0 # Fila única para garantir a vez de todos
     participacao_semanal = {}
 
     for dia in dias:
@@ -75,48 +70,40 @@ def gerar_escala(nomes):
         if semana not in participacao_semanal:
             participacao_semanal[semana] = set()
 
-        # 1. SLOT MANHÃ (Flash Manhã)
-        nome_flash_manha = nomes[idx_flash % len(nomes)]
-        escala.append({
-            "Semana": semana,
-            "Data": dia.strftime("%d/%m/%Y"),
-            "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-            "Reunião": "Flash Manhã",
-            "Apresentador": nome_flash_manha
-        })
-        participacao_semanal[semana].add(nome_flash_manha)
-        idx_flash += 1
-        
-        # 2. SLOT TARDE
-        if dia_semana in [1, 3]: # Terça e Quinta (DOR)
-            while True:
-                nome_dor = nomes[idx_dor % len(nomes)]
-                # REGRA: Não pode ser Dani/Rafael E não pode ter apresentado na semana
-                if nome_dor in ["Dani", "Rafael"] or nome_dor in participacao_semanal[semana]:
-                    idx_dor += 1
+        # Define quais reuniões ocorrem no dia
+        reunioes_do_dia = ["Flash Manhã"]
+        if dia_semana in [1, 3]: # Terça e Quinta
+            reunioes_do_dia.append("DOR")
+        else: # Segunda, Quarta e Sexta
+            reunioes_do_dia.append("Flash Tarde")
+
+        for r in reunioes_do_dia:
+            tentativas = 0
+            while tentativas < len(nomes):
+                nome_atual = nomes[idx_geral % len(nomes)]
+                
+                # REGRAS DE BLOQUEIO:
+                # 1. Não pode apresentar 2x na mesma semana
+                # 2. Dani e Rafael não fazem DOR
+                ja_apresentou = nome_atual in participacao_semanal[semana]
+                bloqueio_dor = (r == "DOR" and nome_atual in ["Dani", "Rafael"])
+                
+                if ja_apresentou or bloqueio_dor:
+                    idx_geral += 1
+                    tentativas += 1
                     continue
                 
+                # Se passou nas regras, escala:
                 escala.append({
                     "Semana": semana,
                     "Data": dia.strftime("%d/%m/%Y"),
                     "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                    "Reunião": "DOR",
-                    "Apresentador": nome_dor
+                    "Reunião": r,
+                    "Apresentador": nome_atual
                 })
-                participacao_semanal[semana].add(nome_dor)
-                idx_dor += 1
+                participacao_semanal[semana].add(nome_atual)
+                idx_geral += 1
                 break
-        else: # Segunda, Quarta e Sexta (Flash Tarde)
-            nome_flash_tarde = nomes[idx_flash % len(nomes)]
-            escala.append({
-                "Semana": semana,
-                "Data": dia.strftime("%d/%m/%Y"),
-                "Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana],
-                "Reunião": "Flash Tarde",
-                "Apresentador": nome_flash_tarde
-            })
-            participacao_semanal[semana].add(nome_flash_tarde)
-            idx_flash += 1
             
     return pd.DataFrame(escala)
 
@@ -125,31 +112,16 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala(nomes_lista)
         
-        # --- ACESSIBILIDADE ---
-        if "voz" not in st.session_state:
-            st.session_state.voz = False
-            
-        st.sidebar.title("Acessibilidade")
-        if st.sidebar.button("🔊 Voz On/Off"):
-            st.session_state.voz = not st.session_state.voz
-            st.rerun()
-            
         st.title("🚀 MMD | Dashboard de Apresentações")
         
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Minhas Apresentações no Ano: {filtro_nome}")
+            st.markdown(f"### 📅 Minhas Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
             df_pessoal["Outlook"] = df_pessoal.apply(lambda x: criar_link_outlook(x["Data"], x["Reunião"], x["Apresentador"]), axis=1)
-            
-            st.dataframe(
-                df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]],
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Outlook": st.column_config.LinkColumn("📧 Agendar")}
-            )
+            st.dataframe(df_pessoal[["Data", "Dia", "Reunião", "Semana", "Outlook"]], use_container_width=True, hide_index=True)
             st.markdown("---")
 
         st.subheader("🗓️ Cronograma por Semana")
@@ -166,15 +138,13 @@ if check_login():
                 with cols[i]:
                     o_link = criar_link_outlook(row['Data'], row['Reunião'], row['Apresentador'])
                     st.markdown(f"""
-                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <b style="font-size: 15px; color: #31333F;">{row['Reunião']}</b><br>
-                            <span style="font-size: 17px; color: #333; font-weight: bold;">
-                                <span style="font-size: 20px;">🏆</span> {row['Apresentador']}
-                            </span>
+                            <b style="font-size: 14px;">{row['Reunião']}</b><br>
+                            <span style="font-size: 18px; font-weight: bold;">🏆 {row['Apresentador']}</span>
                         </div>
-                        <div style="margin-top: 15px;">
-                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold; width: 100%;">📧 AGENDAR NO OUTLOOK</a>
+                        <div style="margin-top: 10px;">
+                            <a href="{o_link}" target="_blank" style="display: block; text-decoration: none; color: #0078d4; border: 1px solid #0078d4; padding: 5px; border-radius: 5px; font-size: 11px; text-align: center; background-color: white; font-weight: bold;">📧 AGENDAR NO OUTLOOK</a>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
