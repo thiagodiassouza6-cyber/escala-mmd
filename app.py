@@ -33,8 +33,9 @@ def check_login():
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            user = st.text_input("Usuário")
-            password = st.text_input("Senha", type="password")
+            # .strip() para evitar erro de espaço invisível que vimos no print anterior
+            user = st.text_input("Usuário").strip()
+            password = st.text_input("Senha", type="password").strip()
             if st.button("Acessar Painel", use_container_width=True):
                 if user == USER_ACCESS and password == PASS_ACCESS:
                     st.session_state.logged_in = True
@@ -84,7 +85,6 @@ def gerar_escala_final(nomes):
         sem = dia.isocalendar()[1]
         dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
 
-        # --- MANHÃ ---
         ap_m = fila_flash[idx_f % len(fila_flash)]
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": dia_nome,
@@ -94,13 +94,11 @@ def gerar_escala_final(nomes):
         })
         idx_f += 1
 
-        # --- TARDE (Alternado conforme regra) ---
-        if dia_semana in [1, 3]: # Terça e Quinta = DOR
+        if dia_semana in [1, 3]: 
             ap_d = fila_dor[idx_d % len(fila_dor)]
-            if ap_d == ap_m: # Evita duplicidade no dia
+            if ap_d == ap_m:
                 idx_d += 1
                 ap_d = fila_dor[idx_d % len(fila_dor)]
-            
             escala.append({
                 "Semana": sem, "Data": data_s, "Dia": dia_nome,
                 "Reunião": "DOR", "Apresentador": ap_d,
@@ -108,13 +106,11 @@ def gerar_escala_final(nomes):
                 "Link": criar_link_outlook(data_s, "DOR", ap_d)
             })
             idx_d += 1
-            
-        elif dia_semana in [0, 2, 4]: # Seg, Qua e Sex = Flash Tarde
+        elif dia_semana in [0, 2, 4]:
             ap_t = fila_flash[idx_f % len(fila_flash)]
             if ap_t == ap_m:
                 idx_f += 1
                 ap_t = fila_flash[idx_f % len(fila_flash)]
-                
             escala.append({
                 "Semana": sem, "Data": data_s, "Dia": dia_nome,
                 "Reunião": "Flash Tarde", "Apresentador": ap_t,
@@ -122,13 +118,11 @@ def gerar_escala_final(nomes):
                 "Link": criar_link_outlook(data_s, "Flash Tarde", ap_t)
             })
             idx_f += 1
-
     return pd.DataFrame(escala)
 
 def renderizar_card(row):
-    audio_text = f"Reunião: {row['Reunião']}. Apresentador: {row['Apresentador']}. Backup: {row['Backup']}."
     st.markdown(f"""
-    <div class="card-click" data-audio="{audio_text}" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+    <div class="card-click" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
         <div>
             <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
             <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
@@ -145,10 +139,10 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
         
-        # --- ACESSIBILIDADE ---
+        # --- ACESSIBILIDADE GLOBAL ---
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
-        if st.sidebar.button("🔊 Acessibilidade"):
+        if st.sidebar.button("🔊 Ativar Leitura de Tela"):
             st.session_state.voz = not st.session_state.voz
             st.rerun()
             
@@ -156,23 +150,34 @@ if check_login():
             components.html("""
                 <script>
                 const synth = window.speechSynthesis;
+                let lastText = "";
+
                 function speak(text) {
+                    const cleanText = text.trim();
+                    if (cleanText === "" || cleanText === lastText) return;
+                    
                     if (synth.speaking) { synth.cancel(); }
-                    const utter = new SpeechSynthesisUtterance(text);
+                    
+                    const utter = new SpeechSynthesisUtterance(cleanText);
                     utter.lang = 'pt-BR';
+                    utter.rate = 1.0;
                     synth.speak(utter);
+                    lastText = cleanText;
                 }
-                setTimeout(() => {
-                    parent.document.querySelectorAll('.card-click').forEach(card => {
-                        card.addEventListener('mouseenter', () => speak(card.getAttribute('data-audio')));
-                    });
-                }, 1000);
+
+                // Escuta o movimento do mouse na página inteira (parent do iframe)
+                parent.document.addEventListener('mouseover', (e) => {
+                    // Pega o texto do elemento onde o mouse está em cima
+                    const targetText = e.target.innerText || e.target.textContent;
+                    if (targetText && targetText.length < 300) { // Evita ler blocos gigantes de uma vez
+                        speak(targetText);
+                    }
+                });
                 </script>
             """, height=0)
 
         st.title("🚀 MMD | Dashboard de Apresentações")
         
-        # --- FILTRO POR APRESENTADOR (FORMATO LISTA) ---
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
@@ -188,7 +193,6 @@ if check_login():
             )
             st.markdown("---")
 
-        # --- VISUALIZAÇÃO POR SEMANA ---
         st.subheader("🗓️ Visualização por Semana")
         sem_atual = datetime.now().isocalendar()[1]
         lista_s = sorted(df_total["Semana"].unique())
