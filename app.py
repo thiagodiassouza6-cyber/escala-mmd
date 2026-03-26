@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import urllib.parse
 import streamlit.components.v1 as components
 
@@ -13,7 +13,7 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
-# --- LISTA DE BACKUPS ATUALIZADA ---
+# --- LISTA DE BACKUPS ATUALIZADA (Livia -> Bianca S. / Faiha removida) ---
 MAPA_BACKUPS = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
@@ -33,6 +33,7 @@ def check_login():
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
+            # FORMULÁRIO COM ATRIBUTOS PARA SALVAMENTO DE SENHA
             with st.form("login_form"):
                 user = st.text_input("Usuário", autocomplete="username").strip()
                 password = st.text_input("Senha", type="password", autocomplete="current-password").strip()
@@ -86,7 +87,7 @@ def gerar_escala_final(nomes):
         dia_semana = dia.weekday()
         dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
         
-        # Filtra quem já apresentou nesta mesma semana (Trava de 1 semana)
+        # Trava Semanal
         apresentadores_na_semana = [item['Apresentador'] for item in escala if item['Semana'] == sem]
 
         # --- LÓGICA MANHÃ ---
@@ -104,7 +105,7 @@ def gerar_escala_final(nomes):
         idx_f += 1
 
         # --- LÓGICA TARDE / DOR ---
-        if dia_semana in [1, 3]: # Terça e Quinta (DOR)
+        if dia_semana in [1, 3]: 
             while fila_dor[idx_d % len(fila_dor)] in apresentadores_na_semana:
                 idx_d += 1
             ap_d = fila_dor[idx_d % len(fila_dor)]
@@ -115,7 +116,7 @@ def gerar_escala_final(nomes):
                 "Link": criar_link_outlook(data_s, "DOR", ap_d)
             })
             idx_d += 1
-        elif dia_semana in [0, 2, 4]: # Seg, Qua, Sex (Flash Tarde)
+        elif dia_semana in [0, 2, 4]: 
             while fila_flash[idx_f % len(fila_flash)] in apresentadores_na_semana:
                 idx_f += 1
             ap_t = fila_flash[idx_f % len(fila_flash)]
@@ -148,13 +149,22 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
         
-        if "voz" not in st.session_state: st.session_state.voz = False
+        # --- SIDEBAR (CONFIGS E SAIR) ---
         st.sidebar.title("Configurações")
-        btn_label = "🔴 Desativar Leitura de Tela" if st.session_state.voz else "🔊 Ativar Leitura de Tela"
-        if st.sidebar.button(btn_label):
+        
+        # Acessibilidade
+        if "voz" not in st.session_state: st.session_state.voz = False
+        btn_voz = "🔴 Desativar Leitura de Tela" if st.session_state.voz else "🔊 Ativar Leitura de Tela"
+        if st.sidebar.button(btn_voz):
             st.session_state.voz = not st.session_state.voz
             st.rerun()
+
+        # BOTÃO SAIR
+        if st.sidebar.button("🚪 Sair do Painel"):
+            st.session_state.logged_in = False
+            st.rerun()
             
+        # JS de Acessibilidade
         if st.session_state.voz:
             components.html("""
                 <script>
@@ -165,8 +175,7 @@ if check_login():
                     if (cleanText === "" || cleanText === lastText) return;
                     if (synth.speaking) { synth.cancel(); }
                     const utter = new SpeechSynthesisUtterance(cleanText);
-                    utter.lang = 'pt-BR';
-                    utter.rate = 1.0;
+                    utter.lang = 'pt-BR'; utter.rate = 1.0;
                     synth.speak(utter);
                     lastText = cleanText;
                 }
@@ -179,6 +188,7 @@ if check_login():
         else:
             components.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
+        # --- CONTEÚDO PRINCIPAL ---
         st.title("🚀 MMD | Dashboard de Apresentações")
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
