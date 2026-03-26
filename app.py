@@ -33,7 +33,6 @@ def check_login():
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            # .strip() para evitar erro de espaço invisível que vimos no print anterior
             user = st.text_input("Usuário").strip()
             password = st.text_input("Senha", type="password").strip()
             if st.button("Acessar Painel", use_container_width=True):
@@ -105,103 +104,4 @@ def gerar_escala_final(nomes):
                 "Backup": MAPA_BACKUPS.get(ap_d, "N/A"),
                 "Link": criar_link_outlook(data_s, "DOR", ap_d)
             })
-            idx_d += 1
-        elif dia_semana in [0, 2, 4]:
-            ap_t = fila_flash[idx_f % len(fila_flash)]
-            if ap_t == ap_m:
-                idx_f += 1
-                ap_t = fila_flash[idx_f % len(fila_flash)]
-            escala.append({
-                "Semana": sem, "Data": data_s, "Dia": dia_nome,
-                "Reunião": "Flash Tarde", "Apresentador": ap_t,
-                "Backup": MAPA_BACKUPS.get(ap_t, "N/A"),
-                "Link": criar_link_outlook(data_s, "Flash Tarde", ap_t)
-            })
-            idx_f += 1
-    return pd.DataFrame(escala)
-
-def renderizar_card(row):
-    st.markdown(f"""
-    <div class="card-click" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-        <div>
-            <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
-            <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
-            <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span>
-        </div>
-        <div style="margin-top: 10px;">
-            <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold; width: 100%;">📅 AGENDAR OUTLOOK</a>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-if check_login():
-    nomes_lista = carregar_nomes()
-    if nomes_lista:
-        df_total = gerar_escala_final(nomes_lista)
-        
-        # --- ACESSIBILIDADE GLOBAL ---
-        if "voz" not in st.session_state: st.session_state.voz = False
-        st.sidebar.title("Configurações")
-        if st.sidebar.button("🔊 Ativar Leitura de Tela"):
-            st.session_state.voz = not st.session_state.voz
-            st.rerun()
-            
-        if st.session_state.voz:
-            components.html("""
-                <script>
-                const synth = window.speechSynthesis;
-                let lastText = "";
-
-                function speak(text) {
-                    const cleanText = text.trim();
-                    if (cleanText === "" || cleanText === lastText) return;
-                    
-                    if (synth.speaking) { synth.cancel(); }
-                    
-                    const utter = new SpeechSynthesisUtterance(cleanText);
-                    utter.lang = 'pt-BR';
-                    utter.rate = 1.0;
-                    synth.speak(utter);
-                    lastText = cleanText;
-                }
-
-                // Escuta o movimento do mouse na página inteira (parent do iframe)
-                parent.document.addEventListener('mouseover', (e) => {
-                    // Pega o texto do elemento onde o mouse está em cima
-                    const targetText = e.target.innerText || e.target.textContent;
-                    if (targetText && targetText.length < 300) { // Evita ler blocos gigantes de uma vez
-                        speak(targetText);
-                    }
-                });
-                </script>
-            """, height=0)
-
-        st.title("🚀 MMD | Dashboard de Apresentações")
-        
-        opcoes_nomes = ["Todos"] + nomes_lista
-        filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
-        
-        if filtro_nome != "Todos":
-            st.markdown(f"### 📅 Lista de Apresentações: {filtro_nome}")
-            df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            st.data_editor(
-                df_pessoal[["Data", "Dia", "Reunião", "Backup", "Link"]],
-                column_config={
-                    "Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR"),
-                },
-                hide_index=True, use_container_width=True, disabled=True
-            )
-            st.markdown("---")
-
-        st.subheader("🗓️ Visualização por Semana")
-        sem_atual = datetime.now().isocalendar()[1]
-        lista_s = sorted(df_total["Semana"].unique())
-        sem_busca = st.select_slider("Selecione a Semana:", options=lista_s, value=sem_atual if sem_atual in lista_s else lista_s[0])
-        
-        df_semana = df_total[df_total["Semana"] == sem_busca]
-        for d_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {d_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]:
-                    renderizar_card(row)
+            idx_d
