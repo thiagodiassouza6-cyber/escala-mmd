@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 import streamlit.components.v1 as components
 
@@ -13,7 +13,7 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
-# --- LISTA DE BACKUPS ATUALIZADA (Faiha removida e Livia atualizada) ---
+# --- LISTA DE BACKUPS ATUALIZADA ---
 MAPA_BACKUPS = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
@@ -33,12 +33,10 @@ def check_login():
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            # Uso de st.form para habilitar o "Salvar Senha" do navegador
             with st.form("login_form"):
                 user = st.text_input("Usuário", autocomplete="username").strip()
                 password = st.text_input("Senha", type="password", autocomplete="current-password").strip()
                 submit = st.form_submit_button("Acessar Painel", use_container_width=True)
-                
                 if submit:
                     if user == USER_ACCESS and password == PASS_ACCESS:
                         st.session_state.logged_in = True
@@ -83,25 +81,33 @@ def gerar_escala_final(nomes):
     escala = []
 
     for dia in dias:
-        dia_semana = dia.weekday() 
         data_s = dia.strftime("%d/%m/%Y")
         sem = dia.isocalendar()[1]
+        dia_semana = dia.weekday()
         dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
+        
+        # Filtra quem já apresentou nesta mesma semana (Trava de 1 semana)
+        apresentadores_na_semana = [item['Apresentador'] for item in escala if item['Semana'] == sem]
 
+        # --- LÓGICA MANHÃ ---
+        while fila_flash[idx_f % len(fila_flash)] in apresentadores_na_semana:
+            idx_f += 1
         ap_m = fila_flash[idx_f % len(fila_flash)]
+        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": dia_nome,
             "Reunião": "Flash Manhã", "Apresentador": ap_m,
             "Backup": MAPA_BACKUPS.get(ap_m, "N/A"),
             "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)
         })
+        apresentadores_na_semana.append(ap_m)
         idx_f += 1
 
-        if dia_semana in [1, 3]: 
-            ap_d = fila_dor[idx_d % len(fila_dor)]
-            if ap_d == ap_m:
+        # --- LÓGICA TARDE / DOR ---
+        if dia_semana in [1, 3]: # Terça e Quinta (DOR)
+            while fila_dor[idx_d % len(fila_dor)] in apresentadores_na_semana:
                 idx_d += 1
-                ap_d = fila_dor[idx_d % len(fila_dor)]
+            ap_d = fila_dor[idx_d % len(fila_dor)]
             escala.append({
                 "Semana": sem, "Data": data_s, "Dia": dia_nome,
                 "Reunião": "DOR", "Apresentador": ap_d,
@@ -109,11 +115,10 @@ def gerar_escala_final(nomes):
                 "Link": criar_link_outlook(data_s, "DOR", ap_d)
             })
             idx_d += 1
-        elif dia_semana in [0, 2, 4]:
-            ap_t = fila_flash[idx_f % len(fila_flash)]
-            if ap_t == ap_m:
+        elif dia_semana in [0, 2, 4]: # Seg, Qua, Sex (Flash Tarde)
+            while fila_flash[idx_f % len(fila_flash)] in apresentadores_na_semana:
                 idx_f += 1
-                ap_t = fila_flash[idx_f % len(fila_flash)]
+            ap_t = fila_flash[idx_f % len(fila_flash)]
             escala.append({
                 "Semana": sem, "Data": data_s, "Dia": dia_nome,
                 "Reunião": "Flash Tarde", "Apresentador": ap_t,
@@ -121,6 +126,7 @@ def gerar_escala_final(nomes):
                 "Link": criar_link_outlook(data_s, "Flash Tarde", ap_t)
             })
             idx_f += 1
+            
     return pd.DataFrame(escala)
 
 def renderizar_card(row):
@@ -144,7 +150,6 @@ if check_login():
         
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
-        
         btn_label = "🔴 Desativar Leitura de Tela" if st.session_state.voz else "🔊 Ativar Leitura de Tela"
         if st.sidebar.button(btn_label):
             st.session_state.voz = not st.session_state.voz
@@ -155,49 +160,35 @@ if check_login():
                 <script>
                 const synth = window.speechSynthesis;
                 let lastText = "";
-
                 function speak(text) {
                     const cleanText = text.trim();
                     if (cleanText === "" || cleanText === lastText) return;
                     if (synth.speaking) { synth.cancel(); }
-                    
                     const utter = new SpeechSynthesisUtterance(cleanText);
                     utter.lang = 'pt-BR';
                     utter.rate = 1.0;
                     synth.speak(utter);
                     lastText = cleanText;
                 }
-
                 parent.document.addEventListener('mouseover', (e) => {
                     const targetText = e.target.innerText || e.target.textContent;
-                    if (targetText && targetText.length < 300) {
-                        speak(targetText);
-                    }
+                    if (targetText && targetText.length < 300) { speak(targetText); }
                 });
                 </script>
             """, height=0)
         else:
-            components.html("""
-                <script>
-                window.speechSynthesis.cancel();
-                </script>
-            """, height=0)
+            components.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
         st.title("🚀 MMD | Dashboard de Apresentações")
-        
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
         
         if filtro_nome != "Todos":
             st.markdown(f"### 📅 Lista de Apresentações: {filtro_nome}")
             df_pessoal = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            st.data_editor(
-                df_pessoal[["Data", "Dia", "Reunião", "Backup", "Link"]],
-                column_config={
-                    "Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR"),
-                },
-                hide_index=True, use_container_width=True, disabled=True
-            )
+            st.data_editor(df_pessoal[["Data", "Dia", "Reunião", "Backup", "Link"]],
+                column_config={"Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR")},
+                hide_index=True, use_container_width=True, disabled=True)
             st.markdown("---")
 
         st.subheader("🗓️ Visualização por Semana")
