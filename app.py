@@ -33,14 +33,18 @@ def check_login():
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            user = st.text_input("Usuário").strip()
-            password = st.text_input("Senha", type="password").strip()
-            if st.button("Acessar Painel", use_container_width=True):
-                if user == USER_ACCESS and password == PASS_ACCESS:
-                    st.session_state.logged_in = True
-                    st.rerun()
-                else:
-                    st.error("Usuário ou senha incorretos.")
+            # Uso de st.form para habilitar o "Salvar Senha" do navegador
+            with st.form("login_form"):
+                user = st.text_input("Usuário", autocomplete="username").strip()
+                password = st.text_input("Senha", type="password", autocomplete="current-password").strip()
+                submit = st.form_submit_button("Acessar Painel", use_container_width=True)
+                
+                if submit:
+                    if user == USER_ACCESS and password == PASS_ACCESS:
+                        st.session_state.logged_in = True
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
         return False
     return True
 
@@ -138,7 +142,6 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
         
-        # --- ACESSIBILIDADE GLOBAL ---
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
         
