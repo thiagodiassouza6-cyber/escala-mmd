@@ -29,16 +29,21 @@ MAPA_BACKUPS = {
 def check_login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
+        
     if not st.session_state.logged_in:
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
+        
         with col2:
-            # FORMULÁRIO COM ATRIBUTOS PARA SALVAMENTO DE SENHA
-            with st.form("login_form"):
-                user = st.text_input("Usuário", autocomplete="username").strip()
-                password = st.text_input("Senha", type="password", autocomplete="current-password").strip()
-                submit = st.form_submit_button("Acessar Painel", use_container_width=True)
-                if submit:
+            # BLOCO TÉCNICO PARA FORÇAR SALVAMENTO DE SENHA NO NAVEGADOR
+            with st.form("login_system", clear_on_submit=False):
+                # O uso de key e label ajuda na identificação do DOM
+                user = st.text_input("Usuário", key="username_field", autocomplete="username").strip()
+                password = st.text_input("Senha", type="password", key="password_field", autocomplete="current-password").strip()
+                
+                submit_button = st.form_submit_button("Acessar Painel", use_container_width=True)
+                
+                if submit_button:
                     if user == USER_ACCESS and password == PASS_ACCESS:
                         st.session_state.logged_in = True
                         st.rerun()
@@ -47,6 +52,7 @@ def check_login():
         return False
     return True
 
+# --- FUNÇÕES DE APOIO ---
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
@@ -90,7 +96,7 @@ def gerar_escala_final(nomes):
         # Trava Semanal
         apresentadores_na_semana = [item['Apresentador'] for item in escala if item['Semana'] == sem]
 
-        # --- LÓGICA MANHÃ ---
+        # --- MANHÃ ---
         while fila_flash[idx_f % len(fila_flash)] in apresentadores_na_semana:
             idx_f += 1
         ap_m = fila_flash[idx_f % len(fila_flash)]
@@ -104,7 +110,7 @@ def gerar_escala_final(nomes):
         apresentadores_na_semana.append(ap_m)
         idx_f += 1
 
-        # --- LÓGICA TARDE / DOR ---
+        # --- TARDE / DOR ---
         if dia_semana in [1, 3]: 
             while fila_dor[idx_d % len(fila_dor)] in apresentadores_na_semana:
                 idx_d += 1
@@ -132,7 +138,7 @@ def gerar_escala_final(nomes):
 
 def renderizar_card(row):
     st.markdown(f"""
-    <div class="card-click" style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
         <div>
             <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br>
             <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br>
@@ -144,12 +150,12 @@ def renderizar_card(row):
     </div>
     """, unsafe_allow_html=True)
 
+# --- EXECUÇÃO DO APP ---
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
         
-        # --- SIDEBAR (CONFIGS E SAIR) ---
         st.sidebar.title("Configurações")
         
         # Acessibilidade
@@ -159,12 +165,11 @@ if check_login():
             st.session_state.voz = not st.session_state.voz
             st.rerun()
 
-        # BOTÃO SAIR
+        # LOGOUT
         if st.sidebar.button("🚪 Sair do Painel"):
             st.session_state.logged_in = False
             st.rerun()
             
-        # JS de Acessibilidade
         if st.session_state.voz:
             components.html("""
                 <script>
@@ -185,10 +190,7 @@ if check_login():
                 });
                 </script>
             """, height=0)
-        else:
-            components.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
-        # --- CONTEÚDO PRINCIPAL ---
         st.title("🚀 MMD | Dashboard de Apresentações")
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
