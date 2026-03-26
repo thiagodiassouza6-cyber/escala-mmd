@@ -13,15 +13,15 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
-# --- LISTA DE BACKUPS ATUALIZADA ---
+# --- LISTA DE BACKUPS ATUALIZADA (Faiha removida e Livia atualizada) ---
 MAPA_BACKUPS = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Enrique": "Jazmin", 
     "Dani": "Sonia", "Debora": "Bruna", "Diana": "Julia", 
-    "Faiha": "Bianca S.", "Florencia": "Diana", "Gisele": "Thiago", 
+    "Florencia": "Diana", "Gisele": "Thiago", 
     "Honorato": "Bruno", "Jazmin": "Abigail", "Jesus": "Luca", 
-    "Julia": "Honorato", "Livia": "Faiha", "Luca": "Enrique", 
+    "Julia": "Honorato", "Livia": "Bianca S.", "Luca": "Enrique", 
     "Mijal": "Livia", "Rafael": "Florencia", "Renan": "Debora", 
     "Sonia": "Jesus", "Soledad": "Gisele", "Thiago": "Renan"
 }
@@ -138,7 +138,7 @@ if check_login():
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
         
-        # --- ACESSIBILIDADE GLOBAL (HABILITAR/DESABILITAR) ---
+        # --- ACESSIBILIDADE GLOBAL ---
         if "voz" not in st.session_state: st.session_state.voz = False
         st.sidebar.title("Configurações")
         
@@ -174,7 +174,6 @@ if check_login():
                 </script>
             """, height=0)
         else:
-            # Comando para interromper a voz imediatamente ao desativar
             components.html("""
                 <script>
                 window.speechSynthesis.cancel();
