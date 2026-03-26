@@ -29,20 +29,14 @@ MAPA_BACKUPS = {
 def check_login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
-        
     if not st.session_state.logged_in:
         st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,1,1])
-        
         with col2:
-            # BLOCO TÉCNICO PARA FORÇAR SALVAMENTO DE SENHA NO NAVEGADOR
             with st.form("login_system", clear_on_submit=False):
-                # O uso de key e label ajuda na identificação do DOM
                 user = st.text_input("Usuário", key="username_field", autocomplete="username").strip()
                 password = st.text_input("Senha", type="password", key="password_field", autocomplete="current-password").strip()
-                
                 submit_button = st.form_submit_button("Acessar Painel", use_container_width=True)
-                
                 if submit_button:
                     if user == USER_ACCESS and password == PASS_ACCESS:
                         st.session_state.logged_in = True
@@ -52,7 +46,6 @@ def check_login():
         return False
     return True
 
-# --- FUNÇÕES DE APOIO ---
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
@@ -92,15 +85,12 @@ def gerar_escala_final(nomes):
         sem = dia.isocalendar()[1]
         dia_semana = dia.weekday()
         dia_nome = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"][dia_semana]
-        
-        # Trava Semanal
         apresentadores_na_semana = [item['Apresentador'] for item in escala if item['Semana'] == sem]
 
         # --- MANHÃ ---
         while fila_flash[idx_f % len(fila_flash)] in apresentadores_na_semana:
             idx_f += 1
         ap_m = fila_flash[idx_f % len(fila_flash)]
-        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": dia_nome,
             "Reunião": "Flash Manhã", "Apresentador": ap_m,
@@ -150,47 +140,20 @@ def renderizar_card(row):
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO DO APP ---
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         df_total = gerar_escala_final(nomes_lista)
-        
         st.sidebar.title("Configurações")
-        
-        # Acessibilidade
         if "voz" not in st.session_state: st.session_state.voz = False
         btn_voz = "🔴 Desativar Leitura de Tela" if st.session_state.voz else "🔊 Ativar Leitura de Tela"
         if st.sidebar.button(btn_voz):
             st.session_state.voz = not st.session_state.voz
             st.rerun()
-
-        # LOGOUT
         if st.sidebar.button("🚪 Sair do Painel"):
             st.session_state.logged_in = False
             st.rerun()
             
-        if st.session_state.voz:
-            components.html("""
-                <script>
-                const synth = window.speechSynthesis;
-                let lastText = "";
-                function speak(text) {
-                    const cleanText = text.trim();
-                    if (cleanText === "" || cleanText === lastText) return;
-                    if (synth.speaking) { synth.cancel(); }
-                    const utter = new SpeechSynthesisUtterance(cleanText);
-                    utter.lang = 'pt-BR'; utter.rate = 1.0;
-                    synth.speak(utter);
-                    lastText = cleanText;
-                }
-                parent.document.addEventListener('mouseover', (e) => {
-                    const targetText = e.target.innerText || e.target.textContent;
-                    if (targetText && targetText.length < 300) { speak(targetText); }
-                });
-                </script>
-            """, height=0)
-
         st.title("🚀 MMD | Dashboard de Apresentações")
         opcoes_nomes = ["Todos"] + nomes_lista
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", opcoes_nomes)
@@ -201,6 +164,10 @@ if check_login():
             st.data_editor(df_pessoal[["Data", "Dia", "Reunião", "Backup", "Link"]],
                 column_config={"Link": st.column_config.LinkColumn("Agenda Outlook", display_text="📅 AGENDAR")},
                 hide_index=True, use_container_width=True, disabled=True)
+            
+            # --- NOVO CONTADOR POR NOME ---
+            total_ap = len(df_pessoal)
+            st.info(f"📊 **{filtro_nome}** possui um total de **{total_ap}** apresentações agendadas para o ano de 2026.")
             st.markdown("---")
 
         st.subheader("🗓️ Visualização por Semana")
