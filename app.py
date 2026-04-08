@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import io
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
+st.set_page_config(page_title="MMD | Portal de Escalas", layout="wide")
 
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
@@ -20,7 +20,8 @@ MESES_NOMES = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-MAPA_BACKUPS = {
+# SEU MAPA ORIGINAL (A BASE DA HERANÇA)
+MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
     "Bruna": "Anna Laura", "Bruno": "Bianca M.", 
@@ -32,6 +33,19 @@ MAPA_BACKUPS = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
+# --- LÓGICA DE HERANÇA RECURSIVA ---
+def encontrar_backup_vivo(nome_apresentador, nomes_ativos):
+    """Busca o próximo backup na linha sucessória que ainda esteja ativo"""
+    proximo = MAPA_REFERENCIA.get(nome_apresentador)
+    
+    # Se não houver ninguém mapeado ou se entramos em loop infinito
+    tentativas = 0
+    while proximo and proximo not in nomes_ativos and tentativas < len(MAPA_REFERENCIA):
+        proximo = MAPA_REFERENCIA.get(proximo)
+        tentativas += 1
+        
+    return proximo if proximo in nomes_ativos else "Sem Backup Ativo"
+
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
     output = io.BytesIO()
@@ -40,13 +54,10 @@ def converter_para_excel(df):
     return output.getvalue()
 
 def preparar_df_mensal_estruturado(df_mes):
-    """Estrutura: Data | Dia | Resp. Manhã | Backup Manhã | Tipo Tarde/DOR | Resp. Tarde | Backup Tarde"""
     manha = df_mes[df_mes['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
     manha.columns = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã']
-    
     tarde = df_mes[df_mes['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
     tarde.columns = ['Data', 'Responsável Tarde', 'Backup Tarde', 'Tipo Tarde/DOR']
-    
     df_final = pd.merge(manha, tarde, on='Data', how='outer')
     cols_ordem = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
     return df_final[cols_ordem]
@@ -101,7 +112,6 @@ def check_login():
         return False
     return True
 
-# --- UTILITÁRIOS ---
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
@@ -133,16 +143,17 @@ def gerar_escala_final(nomes):
         d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
         aps_sem = [item['Apresentador'] for item in escala if item['Semana'] == sem]
         
-        # Lógica Manhã
+        # Manhã
         while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
         ap_m = fila_f[idx_f % len(fila_f)]
-        b1 = MAPA_BACKUPS.get(ap_m, "N/A")
-        b2 = MAPA_BACKUPS.get(b1, "N/A")
-        b3 = MAPA_BACKUPS.get(b2, "N/A")
+        b1 = encontrar_backup_vivo(ap_m, nomes)
+        b2 = encontrar_backup_vivo(b1, nomes)
+        b3 = encontrar_backup_vivo(b2, nomes)
+        
         escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã", "Apresentador": ap_m, "Backup": b1, "Backup2": b2, "Backup3": b3, "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)})
         aps_sem.append(ap_m); idx_f += 1
         
-        # Lógica Tarde
+        # Tarde (DOR ou Flash)
         if d_sem in [1, 3]: 
             while fila_d[idx_d % len(fila_d)] in aps_sem: idx_d += 1
             ap_t = fila_d[idx_d % len(fila_d)]
@@ -154,10 +165,10 @@ def gerar_escala_final(nomes):
             reuniao_t = "Flash Tarde"
             idx_f += 1
             
-        b1_t = MAPA_BACKUPS.get(ap_t, "N/A")
-        b2_t = MAPA_BACKUPS.get(b1_t, "N/A")
-        b3_t = MAPA_BACKUPS.get(b2_t, "N/A")
-        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": reuniao_t, "Apresentador": ap_t, "Backup": b1_t, "Backup2": b2_t, "Backup3": b3_t, "Link": criar_link_outlook(data_s, reuniao_t, ap_t)})
+        bt1 = encontrar_backup_vivo(ap_t, nomes)
+        bt2 = encontrar_backup_vivo(bt1, nomes)
+        bt3 = encontrar_backup_vivo(bt2, nomes)
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": reuniao_t, "Apresentador": ap_t, "Backup": bt1, "Backup2": bt2, "Backup3": bt3, "Link": criar_link_outlook(data_s, reuniao_t, ap_t)})
         
     return pd.DataFrame(escala)
 
@@ -167,7 +178,7 @@ def renderizar_card(row):
         <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span><br>
-        <span title="Próximo Backup: {row['Backup3']}" style="font-size: 13px; color: #777; cursor: help; display: block; margin-top: 3px;">🛡️ Backup 2: {row['Backup2']}</span><br>
+        <span title="Próximo na linha: {row['Backup3']}" style="font-size: 13px; color: #777; cursor: help; display: block; margin-top: 3px;">🛡️ Backup 2: {row['Backup2']}</span><br>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
@@ -203,7 +214,7 @@ if check_login():
             df_mes_raw = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_sel]].copy()
             if not df_mes_raw.empty:
                 df_mes_final = preparar_df_mensal_estruturado(df_mes_raw)
-                st.write(f"✅ Escala estruturada pronta para download.")
+                st.write(f"✅ Escala dinâmica de {mes_sel} pronta (Lógica de Herança ativada).")
                 excel_mensal = converter_para_excel(df_mes_final)
                 st.download_button(label=f"💾 Baixar Escala Consolidada {mes_sel} (.xlsx)", data=excel_mensal, file_name=f'Escala_MMD_{mes_sel}_Completa.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
         st.divider()
