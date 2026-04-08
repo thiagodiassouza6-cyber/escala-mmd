@@ -41,22 +41,47 @@ def converter_para_excel(df):
 
 def preparar_df_mensal_estruturado(df_mes):
     """Estrutura: Data | Dia | Resp. Manhã | Backup Manhã | Tipo Tarde/DOR | Resp. Tarde | Backup Tarde"""
-    # Filtro Manhã
     manha = df_mes[df_mes['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
     manha.columns = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã']
     
-    # Filtro Tarde (Flash Tarde ou DOR)
     tarde = df_mes[df_mes['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
     tarde.columns = ['Data', 'Responsável Tarde', 'Backup Tarde', 'Tipo Tarde/DOR']
     
-    # Merge das tabelas por Data
     df_final = pd.merge(manha, tarde, on='Data', how='outer')
-    
-    # Reorganização Final das Colunas conforme o print enviado
     cols_ordem = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
     return df_final[cols_ordem]
 
-# --- ACESSIBILIDADE E LOGIN ---
+# --- ACESSIBILIDADE ---
+def injetar_leitor_acessibilidade():
+    components.html("""
+        <script>
+            const synth = window.speechSynthesis;
+            let ultimoTexto = "";
+            function falar(texto) {
+                if (!texto || texto === ultimoTexto) return;
+                synth.cancel(); 
+                const ut = new SpeechSynthesisUtterance(texto);
+                ut.lang = 'pt-BR';
+                ut.rate = 1.1;
+                ultimoTexto = texto;
+                synth.speak(ut);
+                setTimeout(() => { ultimoTexto = ""; }, 800);
+            }
+            const docAlvo = window.parent.document;
+            docAlvo.addEventListener('mouseover', (e) => {
+                const el = e.target;
+                const textoParaLer = (el.innerText || el.textContent).trim();
+                if (textoParaLer.length > 0 && !textoParaLer.includes("http")) {
+                    falar(textoParaLer);
+                }
+            }, true);
+            docAlvo.addEventListener('mouseout', () => {
+                synth.cancel();
+            }, true);
+        </script>
+    """, height=0, width=0)
+
+# --- LOGIN ---
 def check_login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -76,6 +101,7 @@ def check_login():
         return False
     return True
 
+# --- UTILITÁRIOS ---
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
         data_obj = datetime.strptime(data_str, "%d/%m/%Y")
@@ -107,13 +133,13 @@ def gerar_escala_final(nomes):
         d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
         aps_sem = [item['Apresentador'] for item in escala if item['Semana'] == sem]
         
-        # Flash Manhã
+        # Manhã
         while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
         ap_m = fila_f[idx_f % len(fila_f)]
         escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã", "Apresentador": ap_m, "Backup": MAPA_BACKUPS.get(ap_m, "N/A"), "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)})
         aps_sem.append(ap_m); idx_f += 1
         
-        # Tarde (DOR ou Flash Tarde)
+        # Tarde (DOR ou Flash)
         if d_sem in [1, 3]: 
             while fila_d[idx_d % len(fila_d)] in aps_sem: idx_d += 1
             ap_d = fila_d[idx_d % len(fila_d)]
@@ -138,34 +164,32 @@ def renderizar_card(row):
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO DO APP ---
+# --- EXECUÇÃO ---
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
+        # SIDEBAR ACESSIBILIDADE
+        st.sidebar.title("⚙️ Configurações")
+        acessibilidade = st.sidebar.toggle("♿ Ativar Leitura (Acessibilidade)", value=False)
+        if acessibilidade: injetar_leitor_acessibilidade()
+
         df_total = gerar_escala_final(nomes_lista)
         st.title(f"🚀 MMD | Dashboard de Apresentações {datetime.now().year}")
         
-        # --- BUSCAR APRESENTADOR ---
+        # BUSCA INDIVIDUAL
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_lista)
-        
         if filtro_nome != "Todos":
             df_p = df_total[df_total["Apresentador"] == filtro_nome].copy()
             df_exibir = df_p[["Data", "Dia", "Reunião", "Backup", "Semana", "Link"]]
+            st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações.")
             
-            st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações em {datetime.now().year}.")
-            
-            st.dataframe(
-                df_exibir,
-                column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook")},
-                use_container_width=True, hide_index=True
-            )
+            st.dataframe(df_exibir, column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook")}, use_container_width=True, hide_index=True)
 
-            # Download Individual
             excel_indiv = converter_para_excel(df_exibir.drop(columns=["Link"]))
             st.download_button(label=f"📥 Baixar escala de {filtro_nome} (.xlsx)", data=excel_indiv, file_name=f'Escala_{filtro_nome}.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
             st.divider()
 
-        # --- EXTRAÇÃO MENSAL ESTRUTURADA ---
+        # EXTRAÇÃO MENSAL
         with st.expander("📂 Extrair Planilha Mensal (Flash Manhã vs Tarde)"):
             mes_sel = st.selectbox("Selecione o mês:", list(MESES_NOMES.keys()))
             df_total['Data_Aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
@@ -173,15 +197,14 @@ if check_login():
             
             if not df_mes_raw.empty:
                 df_mes_final = preparar_df_mensal_estruturado(df_mes_raw)
-                st.write(f"✅ Colunas: Data | Dia | Resp. Manhã | Backup Manhã | Tipo Tarde | Resp. Tarde | Backup Tarde")
-                
+                st.write(f"✅ Escala de {mes_sel} pronta para exportação.")
                 excel_mensal = converter_para_excel(df_mes_final)
                 st.download_button(label=f"💾 Baixar Escala Consolidada {mes_sel} (.xlsx)", data=excel_mensal, file_name=f'Escala_MMD_{mes_sel}_Completa.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
             else:
                 st.warning("Sem dados para este mês.")
         st.divider()
 
-        # --- VISUALIZAÇÃO SEMANAL ---
+        # VIEW SEMANAL
         sem_atual = datetime.now().isocalendar()[1]
         sem_busca = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=sem_atual)
         df_semana = df_total[df_total["Semana"] == sem_busca]
