@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import urllib.parse
 import streamlit.components.v1 as components
+import io
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Escala de Apresentações", layout="wide")
@@ -19,7 +20,6 @@ MESES_NOMES = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-# Mapa de Backups (Atualizado: Sonia, Enrique e Faiha removidos)
 MAPA_BACKUPS = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
@@ -32,11 +32,26 @@ MAPA_BACKUPS = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
-# --- FUNÇÕES DE UTILIDADE ---
-@st.cache_data
-def converter_para_csv(df):
-    return df.to_csv(index=False).encode('utf-8-sig')
+# --- FUNÇÕES DE EXPORTAÇÃO ---
+def converter_para_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Escala_MMD')
+    return output.getvalue()
 
+def preparar_df_mensal_estruturado(df_mes):
+    """Transforma a lista em colunas: Data | Flash Manhã | Nome | Flash Tarde | Nome"""
+    # Separamos as reuniões
+    manha = df_mes[df_mes['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador']].rename(columns={'Apresentador': 'Responsável Manhã'})
+    tarde = df_mes[df_mes['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Reunião']].rename(columns={'Apresentador': 'Responsável Tarde', 'Reunião': 'Tipo Tarde/DOR'})
+    
+    # Unimos as duas em uma linha por data
+    df_final = pd.merge(manha, tarde, on='Data', how='outer')
+    # Reorganizamos as colunas conforme pedido
+    df_final = df_final[['Data', 'Dia', 'Responsável Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde']]
+    return df_final
+
+# --- ACESSIBILIDADE E LOGIN ---
 def injetar_leitor_acessibilidade():
     components.html("""
         <script>
@@ -171,43 +186,50 @@ if check_login():
             df_exibir = df_p[["Data", "Dia", "Reunião", "Backup_Atual", "Semana", "Link"]]
             
             st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações em {datetime.now().year}.")
-            st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+            
+            # CORREÇÃO DO LINK NO DATAFRAME
+            st.dataframe(
+                df_exibir,
+                column_config={
+                    "Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook")
+                },
+                use_container_width=True, 
+                hide_index=True
+            )
 
-            csv_data = converter_para_csv(df_exibir.drop(columns=["Link"]))
+            excel_indiv = converter_para_excel(df_exibir.drop(columns=["Link"]))
             st.download_button(
-                label=f"📥 Baixar escala individual de {filtro_nome}",
-                data=csv_data,
-                file_name=f'escala_MMD_{filtro_nome}.csv',
-                mime='text/csv',
+                label=f"📥 Baixar escala de {filtro_nome} (.xlsx)",
+                data=excel_indiv,
+                file_name=f'Escala_{filtro_nome}.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 use_container_width=True
             )
             st.divider()
 
-        # --- EXTRAÇÃO POR MÊS ---
-        with st.expander("📂 Extrair Planilha Mensal (Equipe Completa)"):
-            mes_selecionado = st.selectbox("Selecione o mês desejado:", list(MESES_NOMES.keys()))
-            
-            # Criamos uma coluna temporária para filtrar pelo mês
+        # --- EXTRAÇÃO POR MÊS ESTRUTURADA ---
+        with st.expander("📂 Extrair Planilha Mensal (Flash Manhã vs Tarde)"):
+            mes_sel = st.selectbox("Selecione o mês:", list(MESES_NOMES.keys()))
             df_total['Data_Aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
-            df_mes = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_selecionado]].copy()
+            df_mes_raw = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_sel]].copy()
             
-            if not df_mes.empty:
-                df_export_mes = df_mes[["Data", "Dia", "Apresentador", "Reunião", "Backup"]]
-                st.write(f"✅ Escala de **{mes_selecionado}** pronta com {len(df_export_mes)} registros.")
+            if not df_mes_raw.empty:
+                df_mes_final = preparar_df_mensal_estruturado(df_mes_raw)
+                st.write(f"✅ Planilha de **{mes_sel}** gerada com sucesso.")
                 
-                csv_mes = converter_para_csv(df_export_mes)
+                excel_mensal = converter_para_excel(df_mes_final)
                 st.download_button(
-                    label=f"💾 Baixar Planilha de {mes_selecionado} (Excel/CSV)",
-                    data=csv_mes,
-                    file_name=f'Escala_MMD_Geral_{mes_selecionado}.csv',
-                    mime='text/csv',
+                    label=f"💾 Baixar Escala Consolidada {mes_sel} (.xlsx)",
+                    data=excel_mensal,
+                    file_name=f'Escala_MMD_{mes_sel}_Estruturada.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     use_container_width=True
                 )
             else:
-                st.warning("Nenhum dado encontrado para este mês.")
+                st.warning("Sem dados para este mês.")
         st.divider()
 
-        st.subheader("🗓️ Visualização por Semana")
+        # --- VISUALIZAÇÃO SEMANAL ---
         sem_atual = datetime.now().isocalendar()[1]
         sem_busca = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=sem_atual)
         
