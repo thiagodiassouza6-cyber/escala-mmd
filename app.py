@@ -133,31 +133,41 @@ def gerar_escala_final(nomes):
         d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
         aps_sem = [item['Apresentador'] for item in escala if item['Semana'] == sem]
         
-        # Manhã
+        # Lógica Manhã
         while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
         ap_m = fila_f[idx_f % len(fila_f)]
-        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã", "Apresentador": ap_m, "Backup": MAPA_BACKUPS.get(ap_m, "N/A"), "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)})
+        b1 = MAPA_BACKUPS.get(ap_m, "N/A")
+        b2 = MAPA_BACKUPS.get(b1, "N/A")
+        b3 = MAPA_BACKUPS.get(b2, "N/A")
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã", "Apresentador": ap_m, "Backup": b1, "Backup2": b2, "Backup3": b3, "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)})
         aps_sem.append(ap_m); idx_f += 1
         
-        # Tarde (DOR ou Flash)
+        # Lógica Tarde
         if d_sem in [1, 3]: 
             while fila_d[idx_d % len(fila_d)] in aps_sem: idx_d += 1
-            ap_d = fila_d[idx_d % len(fila_d)]
-            escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "DOR", "Apresentador": ap_d, "Backup": MAPA_BACKUPS.get(ap_d, "N/A"), "Link": criar_link_outlook(data_s, "DOR", ap_d)})
+            ap_t = fila_d[idx_d % len(fila_d)]
+            reuniao_t = "DOR"
             idx_d += 1
         else:
             while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
             ap_t = fila_f[idx_f % len(fila_f)]
-            escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Tarde", "Apresentador": ap_t, "Backup": MAPA_BACKUPS.get(ap_t, "N/A"), "Link": criar_link_outlook(data_s, "Flash Tarde", ap_t)})
+            reuniao_t = "Flash Tarde"
             idx_f += 1
+            
+        b1_t = MAPA_BACKUPS.get(ap_t, "N/A")
+        b2_t = MAPA_BACKUPS.get(b1_t, "N/A")
+        b3_t = MAPA_BACKUPS.get(b2_t, "N/A")
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": reuniao_t, "Apresentador": ap_t, "Backup": b1_t, "Backup2": b2_t, "Backup3": b3_t, "Link": criar_link_outlook(data_s, reuniao_t, ap_t)})
+        
     return pd.DataFrame(escala)
 
 def renderizar_card(row):
     st.markdown(f"""
-    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 150px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 180px; margin-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
         <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span><br>
+        <span title="Próximo Backup: {row['Backup3']}" style="font-size: 13px; color: #777; cursor: help; display: block; margin-top: 3px;">🛡️ Backup 2: {row['Backup2']}</span><br>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
@@ -168,7 +178,6 @@ def renderizar_card(row):
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
-        # SIDEBAR ACESSIBILIDADE
         st.sidebar.title("⚙️ Configurações")
         acessibilidade = st.sidebar.toggle("♿ Ativar Leitura (Acessibilidade)", value=False)
         if acessibilidade: injetar_leitor_acessibilidade()
@@ -182,9 +191,7 @@ if check_login():
             df_p = df_total[df_total["Apresentador"] == filtro_nome].copy()
             df_exibir = df_p[["Data", "Dia", "Reunião", "Backup", "Semana", "Link"]]
             st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações.")
-            
             st.dataframe(df_exibir, column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook")}, use_container_width=True, hide_index=True)
-
             excel_indiv = converter_para_excel(df_exibir.drop(columns=["Link"]))
             st.download_button(label=f"📥 Baixar escala de {filtro_nome} (.xlsx)", data=excel_indiv, file_name=f'Escala_{filtro_nome}.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
             st.divider()
@@ -194,14 +201,11 @@ if check_login():
             mes_sel = st.selectbox("Selecione o mês:", list(MESES_NOMES.keys()))
             df_total['Data_Aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
             df_mes_raw = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_sel]].copy()
-            
             if not df_mes_raw.empty:
                 df_mes_final = preparar_df_mensal_estruturado(df_mes_raw)
-                st.write(f"✅ Escala de {mes_sel} pronta para exportação.")
+                st.write(f"✅ Escala estruturada pronta para download.")
                 excel_mensal = converter_para_excel(df_mes_final)
                 st.download_button(label=f"💾 Baixar Escala Consolidada {mes_sel} (.xlsx)", data=excel_mensal, file_name=f'Escala_MMD_{mes_sel}_Completa.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-            else:
-                st.warning("Sem dados para este mês.")
         st.divider()
 
         # VIEW SEMANAL
