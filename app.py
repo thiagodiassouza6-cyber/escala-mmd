@@ -13,6 +13,12 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
+MESES_NOMES = {
+    "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, 
+    "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, 
+    "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
+}
+
 # Mapa de Backups (Atualizado: Sonia, Enrique e Faiha removidos)
 MAPA_BACKUPS = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
@@ -29,7 +35,6 @@ MAPA_BACKUPS = {
 # --- FUNÇÕES DE UTILIDADE ---
 @st.cache_data
 def converter_para_csv(df):
-    # utf-8-sig garante que o Excel abra com acentos corretos
     return df.to_csv(index=False).encode('utf-8-sig')
 
 def injetar_leitor_acessibilidade():
@@ -161,39 +166,46 @@ if check_login():
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_lista)
         
         if filtro_nome != "Todos":
-            # Filtragem e adição da coluna Backup para visualização na tabela
             df_p = df_total[df_total["Apresentador"] == filtro_nome].copy()
             df_p["Backup_Atual"] = MAPA_BACKUPS.get(filtro_nome, "N/A")
-            
-            # Reorganização para a tabela de busca
             df_exibir = df_p[["Data", "Dia", "Reunião", "Backup_Atual", "Semana", "Link"]]
             
             st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações em {datetime.now().year}.")
-            
-            st.dataframe(
-                df_exibir,
-                column_config={
-                    "Data": st.column_config.TextColumn("Data", width="small"),
-                    "Dia": st.column_config.TextColumn("Dia", width="small"),
-                    "Reunião": st.column_config.TextColumn("Reunião", width="medium"),
-                    "Backup_Atual": st.column_config.TextColumn("🔄 Backup", width="medium"),
-                    "Semana": st.column_config.NumberColumn("Sem.", width="small"),
-                    "Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook", width="small")
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            st.dataframe(df_exibir, use_container_width=True, hide_index=True)
 
-            # --- BOTÃO DE DOWNLOAD (Excel/CSV) ---
-            csv_data = converter_para_csv(df_exibir.drop(columns=["Link"])) # Remove link do CSV para ficar limpo
+            csv_data = converter_para_csv(df_exibir.drop(columns=["Link"]))
             st.download_button(
-                label=f"📥 Baixar escala de {filtro_nome} (Excel/CSV)",
+                label=f"📥 Baixar escala individual de {filtro_nome}",
                 data=csv_data,
                 file_name=f'escala_MMD_{filtro_nome}.csv',
                 mime='text/csv',
                 use_container_width=True
             )
             st.divider()
+
+        # --- EXTRAÇÃO POR MÊS ---
+        with st.expander("📂 Extrair Planilha Mensal (Equipe Completa)"):
+            mes_selecionado = st.selectbox("Selecione o mês desejado:", list(MESES_NOMES.keys()))
+            
+            # Criamos uma coluna temporária para filtrar pelo mês
+            df_total['Data_Aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
+            df_mes = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_selecionado]].copy()
+            
+            if not df_mes.empty:
+                df_export_mes = df_mes[["Data", "Dia", "Apresentador", "Reunião", "Backup"]]
+                st.write(f"✅ Escala de **{mes_selecionado}** pronta com {len(df_export_mes)} registros.")
+                
+                csv_mes = converter_para_csv(df_export_mes)
+                st.download_button(
+                    label=f"💾 Baixar Planilha de {mes_selecionado} (Excel/CSV)",
+                    data=csv_mes,
+                    file_name=f'Escala_MMD_Geral_{mes_selecionado}.csv',
+                    mime='text/csv',
+                    use_container_width=True
+                )
+            else:
+                st.warning("Nenhum dado encontrado para este mês.")
+        st.divider()
 
         st.subheader("🗓️ Visualização por Semana")
         sem_atual = datetime.now().isocalendar()[1]
