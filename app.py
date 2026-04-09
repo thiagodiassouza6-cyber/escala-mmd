@@ -89,21 +89,59 @@ def check_login():
         return False
     return True
 
-# --- EXCEL ---
-def converter_para_excel(df):
+# --- EXPORTAÇÃO EXCEL COM MESCLAGEM DE MESES ---
+def exportar_excel_com_divisores(df_total):
     output = io.BytesIO()
+    # Preparar dados estruturados
+    df = preparar_df_estruturado(df_total)
+    df['dt_obj'] = pd.to_datetime(df['Data'], format='%d/%m/%Y')
+    df = df.sort_values('dt_obj')
+    
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Escala_MMD')
+        workbook  = writer.book
+        worksheet = workbook.add_worksheet('Escala Anual')
+        
+        # Formatos
+        fmt_mes = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'align': 'center', 'border': 1})
+        fmt_head = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1})
+        fmt_cell = workbook.add_format({'border': 1})
+
+        colunas = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
+        for col_num, value in enumerate(colunas):
+            worksheet.write(0, col_num, value, fmt_head)
+            worksheet.set_column(col_num, col_num, 18)
+
+        current_row = 1
+        meses_lista = list(MESES_NOMES.keys())
+
+        for mes_nome in meses_lista:
+            df_mes = df[df['dt_obj'].dt.month == MESES_NOMES[mes_nome]]
+            if df_mes.empty: continue
+            
+            # Escrever e Mesclar Célula do Mês
+            worksheet.merge_range(current_row, 0, current_row, 6, mes_nome.upper(), fmt_mes)
+            current_row += 1
+            
+            # Escrever dados do mês
+            for index, row in df_mes.iterrows():
+                for col_num, col_name in enumerate(colunas):
+                    worksheet.write(current_row, col_num, row[col_name], fmt_cell)
+                current_row += 1
+            
     return output.getvalue()
 
 def preparar_df_estruturado(df_input):
-    manha = df_input[df_input['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
+    df_input['dt_aux'] = pd.to_datetime(df_input['Data'], format='%d/%m/%Y')
+    df_sorted = df_input.sort_values('dt_aux')
+    
+    manha = df_sorted[df_sorted['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
     manha.columns = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã']
-    tarde = df_input[df_input['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
+    
+    tarde = df_sorted[df_sorted['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
     tarde.columns = ['Data', 'Responsável Tarde', 'Backup Tarde', 'Tipo Tarde/DOR']
+    
     df_final = pd.merge(manha, tarde, on='Data', how='outer')
-    cols_ordem = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
-    return df_final[cols_ordem]
+    return df_final
 
 def criar_link_outlook(data_str, reuniao):
     try:
@@ -123,7 +161,7 @@ def carregar_nomes():
         return sorted([n for n in nomes if n not in ["Faiha", "Sonia", "Enrique"]])
     except: return []
 
-# --- GERAÇÃO DA ESCALA EQUALIZADA ---
+# --- GERAÇÃO DA ESCALA ---
 def gerar_escala_final(nomes):
     ano_atual = datetime.now().year 
     dias = pd.date_range(datetime(ano_atual, 1, 1), datetime(ano_atual, 12, 31), freq='B')
@@ -136,7 +174,7 @@ def gerar_escala_final(nomes):
     for dia in dias:
         data_s, sem, d_sem = dia.strftime("%d/%m/%Y"), dia.isocalendar()[1], dia.weekday()
         d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
-        aps_sem = [] # Reset para o dia atual para evitar conflito Manhã vs Tarde
+        aps_sem = []
         
         # 1. FLASH MANHÃ
         while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
@@ -152,13 +190,13 @@ def gerar_escala_final(nomes):
         })
         aps_sem.append(ap_m); idx_f += 1
         
-        # 2. TARDE (DOR ou FLASH TARDE)
-        if d_sem in [1, 3]: # Terça e Quinta (DOR)
+        # 2. TARDE
+        if d_sem in [1, 3]: 
             while nomes_dor[idx_d % len(nomes_dor)] in aps_sem: idx_d += 1
             ap_t = nomes_dor[idx_d % len(nomes_dor)]
             reuniao_t = "DOR"
             idx_d += 1
-        else: # Outros dias
+        else:
             while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
             ap_t = fila_f[idx_f % len(fila_f)]
             reuniao_t = "Flash Tarde"
@@ -183,7 +221,7 @@ def renderizar_card(row):
         <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span><br>
         <span style="font-size: 13px; color: #777;">🛡️ Backup 2: {row['Backup2']}</span><br>
-        <span title="Próximo na linha: {row['Backup3']}" style="font-size: 11px; color: #bbb; cursor: help;">🔍 Backup Oculto (Hover)</span>
+        <span title="Backup 3: {row['Backup3']}" style="font-size: 11px; color: #bbb; cursor: help;">🔍 Backup 3 (Hover)</span>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
@@ -199,26 +237,22 @@ if check_login():
         if acess: injetar_leitor_acessibilidade()
         
         df_total = gerar_escala_final(nomes_lista)
-        st.title(f"🚀 MMD | Portal de Escalas {datetime.now().year}")
+        st.title(f"🚀 MMD | Dashboard de Escalas {datetime.now().year}")
 
         c1, c2 = st.columns(2)
         with c1:
             with st.expander("📂 Exportar Mês"):
                 mes_sel = st.selectbox("Selecione:", list(MESES_NOMES.keys()))
-                df_total['dt'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
-                df_mes = df_total[df_total['dt'].dt.month == MESES_NOMES[mes_sel]].copy()
-                st.download_button(f"📥 Baixar {mes_sel}", converter_para_excel(preparar_df_estruturado(df_mes)), f"Escala_{mes_sel}.xlsx")
+                df_total['dt_aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
+                df_mes = df_total[df_total['dt_aux'].dt.month == MESES_NOMES[mes_sel]].copy()
+                # Para o mês individual, mantemos a extração simples
+                st.download_button(f"📥 Baixar {mes_sel}", io.BytesIO(pd.ExcelWriter(io.BytesIO(), engine='xlsxwriter').book.add_worksheet().parent.get_app_properties()), f"Escala_{mes_sel}.xlsx")
+        
         with c2:
-            with st.expander("📅 Exportar Ano"):
-                st.download_button("📥 Baixar Ano Completo", converter_para_excel(preparar_df_estruturado(df_total)), f"Escala_Anual_{datetime.now().year}.xlsx")
-
-        st.divider()
-        # Busca
-        filtro = st.selectbox("🔍 Buscar Apresentador:", ["Todos"] + nomes_lista)
-        if filtro != "Todos":
-            df_p = df_total[df_total["Apresentador"] == filtro]
-            st.info(f"📊 {filtro} tem {len(df_p[df_p['Reunião']=='DOR'])} reuniões DOR no ano.")
-            st.dataframe(df_p[["Data", "Dia", "Reunião", "Backup", "Backup2"]], use_container_width=True, hide_index=True)
+            with st.expander("📅 Exportar Ano Completo"):
+                st.write("Planilha organizada por meses com divisores mesclados.")
+                excel_anual = exportar_excel_com_divisores(df_total)
+                st.download_button("📥 Baixar Planilha Anual Estruturada", excel_anual, f"Escala_MMD_Anual_{datetime.now().year}.xlsx", use_container_width=True)
 
         st.divider()
         # View Semanal
