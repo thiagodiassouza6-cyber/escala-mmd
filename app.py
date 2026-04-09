@@ -123,12 +123,15 @@ def carregar_nomes():
         return sorted([n for n in nomes if n not in ["Faiha", "Sonia", "Enrique"]])
     except: return []
 
-# --- GERAÇÃO DA ESCALA ---
+# --- GERAÇÃO DA ESCALA COM EQUALIZAÇÃO ---
 def gerar_escala_final(nomes):
     ano_atual = datetime.now().year 
     dias = pd.date_range(datetime(ano_atual, 1, 1), datetime(ano_atual, 12, 31), freq='B')
     fila_f, escala = nomes.copy(), []
+    
+    # Lista de DOR: 21 pessoas (Removendo Dani e Rafael)
     nomes_dor = [n for n in nomes if n not in ["Dani", "Rafael"]]
+    
     idx_f, idx_d = 0, 0
     
     for dia in dias:
@@ -144,9 +147,15 @@ def gerar_escala_final(nomes):
         aps_sem.append(ap_m); idx_f += 1
         
         # Tarde (DOR ou Flash Tarde)
-        if d_sem in [1, 3]: 
-            while nomes_dor[idx_d % len(nomes_dor)] in aps_sem: idx_d += 1
+        if d_sem in [1, 3]: # Terça e Quinta (DOR)
+            # Fila circular para garantir 5 apresentações para cada um dos 21
             ap_t = nomes_dor[idx_d % len(nomes_dor)]
+            
+            # Se a pessoa da vez já apresentou na manhã, pula para o próximo para não sobrecarregar no dia
+            if ap_t in aps_sem:
+                idx_d += 1
+                ap_t = nomes_dor[idx_d % len(nomes_dor)]
+            
             reuniao_t = "DOR"
             idx_d += 1
         else:
@@ -176,7 +185,6 @@ def renderizar_card(row):
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
-        # Sidebar com Acessibilidade
         st.sidebar.title("⚙️ Configurações")
         acess = st.sidebar.toggle("♿ Ativar Leitura (Acessibilidade)", value=False)
         if acess: injetar_leitor_acessibilidade()
@@ -202,7 +210,8 @@ if check_login():
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_lista)
         if filtro_nome != "Todos":
             df_p = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            st.info(f"📊 {filtro_nome} tem **{len(df_p)}** apresentações no ano.")
+            df_dor_count = df_p[df_p["Reunião"] == "DOR"]
+            st.info(f"📊 {filtro_nome} tem **{len(df_p)}** apresentações no total, sendo **{len(df_dor_count)} reuniões DOR**.")
             st.dataframe(df_p[["Data", "Dia", "Reunião", "Backup", "Link"]], column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar")}, use_container_width=True, hide_index=True)
 
         st.divider()
