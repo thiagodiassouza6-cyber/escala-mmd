@@ -20,7 +20,6 @@ MESES_NOMES = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-# SEU MAPA ORIGINAL (A BASE DA HERANÇA)
 MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
     "Ariel": "Rafael", "Bianca M.": "Ariel", "Bianca S.": "Amanda", 
@@ -33,31 +32,50 @@ MAPA_REFERENCIA = {
     "Soledad": "Gisele", "Thiago": "Renan"
 }
 
-# --- LÓGICA DE HERANÇA RECURSIVA ---
+# --- LÓGICA DE HERANÇA ---
 def encontrar_backup_vivo(nome_apresentador, nomes_ativos):
-    """Busca o próximo backup na linha sucessória que ainda esteja ativo"""
     proximo = MAPA_REFERENCIA.get(nome_apresentador)
-    
-    # Se não houver ninguém mapeado ou se entramos em loop infinito
     tentativas = 0
     while proximo and proximo not in nomes_ativos and tentativas < len(MAPA_REFERENCIA):
         proximo = MAPA_REFERENCIA.get(proximo)
         tentativas += 1
-        
     return proximo if proximo in nomes_ativos else "Sem Backup Ativo"
 
-# --- FUNÇÕES DE EXPORTAÇÃO ---
+# --- LOGIN ---
+def check_login():
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if not st.session_state.logged_in:
+        st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1,1,1])
+        with col2:
+            with st.form("login_system"):
+                user = st.text_input("Usuário").strip()
+                password = st.text_input("Senha", type="password").strip()
+                if st.form_submit_button("Acessar Painel", use_container_width=True):
+                    if user == USER_ACCESS and password == PASS_ACCESS:
+                        st.session_state.logged_in = True
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
+        return False
+    return True
+
+# --- EXCEL ---
 def converter_para_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Escala_MMD')
     return output.getvalue()
 
-def preparar_df_mensal_estruturado(df_mes):
-    manha = df_mes[df_mes['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
+def preparar_df_estruturado(df_input):
+    """Transforma a lista vertical em colunas Manhã e Tarde lado a lado"""
+    manha = df_input[df_input['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].copy()
     manha.columns = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã']
-    tarde = df_mes[df_mes['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
+    
+    tarde = df_input[df_input['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].copy()
     tarde.columns = ['Data', 'Responsável Tarde', 'Backup Tarde', 'Tipo Tarde/DOR']
+    
     df_final = pd.merge(manha, tarde, on='Data', how='outer')
     cols_ordem = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
     return df_final[cols_ordem]
@@ -86,31 +104,17 @@ def injetar_leitor_acessibilidade():
                     falar(textoParaLer);
                 }
             }, true);
-            docAlvo.addEventListener('mouseout', () => {
-                synth.cancel();
-            }, true);
+            docAlvo.addEventListener('mouseout', () => { synth.cancel(); }, true);
         </script>
     """, height=0, width=0)
 
-# --- LOGIN ---
-def check_login():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if not st.session_state.logged_in:
-        st.markdown("<h2 style='text-align: center;'>Portal de Escalas MMD</h2>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1,1,1])
-        with col2:
-            with st.form("login_system"):
-                user = st.text_input("Usuário").strip()
-                password = st.text_input("Senha", type="password").strip()
-                if st.form_submit_button("Acessar Painel", use_container_width=True):
-                    if user == USER_ACCESS and password == PASS_ACCESS:
-                        st.session_state.logged_in = True
-                        st.rerun()
-                    else:
-                        st.error("Usuário ou senha incorretos.")
-        return False
-    return True
+@st.cache_data(ttl=5)
+def carregar_nomes():
+    try:
+        df = pd.read_csv(SHEET_URL)
+        nomes = df['Funcionario'].dropna().unique().tolist()
+        return sorted([n for n in nomes if n not in ["Faiha", "Sonia", "Enrique"]])
+    except: return []
 
 def criar_link_outlook(data_str, reuniao, apresentador):
     try:
@@ -122,43 +126,42 @@ def criar_link_outlook(data_str, reuniao, apresentador):
         return f"https://outlook.office.com/calendar/0/deeplink/compose?subject={assunto}&startdt={data_iso}T{hora_start}&enddt={data_iso}T{hora_end}"
     except: return "#"
 
-@st.cache_data(ttl=5)
-def carregar_nomes():
-    try:
-        df = pd.read_csv(SHEET_URL)
-        nomes = df['Funcionario'].dropna().unique().tolist()
-        nomes_filtrados = [n for n in nomes if n not in ["Faiha", "Sonia", "Enrique"]]
-        return sorted(nomes_filtrados)
-    except: return []
-
+# --- GERAÇÃO DA ESCALA ---
 def gerar_escala_final(nomes):
     ano_atual = datetime.now().year 
     dias = pd.date_range(datetime(ano_atual, 1, 1), datetime(ano_atual, 12, 31), freq='B')
     fila_f, escala = nomes.copy(), []
-    fila_d = [n for n in nomes if n not in ["Dani", "Rafael"]]
-    idx_f, idx_d = 0, 0
+    
+    nomes_dor = [n for n in nomes if n not in ["Dani", "Rafael"]]
+    grupo_a = nomes_dor[::2]
+    grupo_b = nomes_dor[1::2]
+    
+    idx_f, idx_a, idx_b = 0, 0, 0
     
     for dia in dias:
         data_s, sem, d_sem = dia.strftime("%d/%m/%Y"), dia.isocalendar()[1], dia.weekday()
+        mes_atual = dia.month
         d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
         aps_sem = [item['Apresentador'] for item in escala if item['Semana'] == sem]
         
-        # Manhã
+        # Flash Manhã
         while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
         ap_m = fila_f[idx_f % len(fila_f)]
         b1 = encontrar_backup_vivo(ap_m, nomes)
         b2 = encontrar_backup_vivo(b1, nomes)
         b3 = encontrar_backup_vivo(b2, nomes)
-        
         escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã", "Apresentador": ap_m, "Backup": b1, "Backup2": b2, "Backup3": b3, "Link": criar_link_outlook(data_s, "Flash Manhã", ap_m)})
         aps_sem.append(ap_m); idx_f += 1
         
-        # Tarde (DOR ou Flash)
+        # Tarde (DOR ou Flash Tarde)
         if d_sem in [1, 3]: 
-            while fila_d[idx_d % len(fila_d)] in aps_sem: idx_d += 1
-            ap_t = fila_d[idx_d % len(fila_d)]
+            fila_dor = grupo_a if mes_atual % 2 != 0 else grupo_b
+            idx_dor = idx_a if mes_atual % 2 != 0 else idx_b
+            while fila_dor[idx_dor % len(fila_dor)] in aps_sem: idx_dor += 1
+            ap_t = fila_dor[idx_dor % len(fila_dor)]
             reuniao_t = "DOR"
-            idx_d += 1
+            if mes_atual % 2 != 0: idx_a = idx_dor + 1
+            else: idx_b = idx_dor + 1
         else:
             while fila_f[idx_f % len(fila_f)] in aps_sem: idx_f += 1
             ap_t = fila_f[idx_f % len(fila_f)]
@@ -178,53 +181,54 @@ def renderizar_card(row):
         <b style="font-size: 14px; color: #31333F;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; color: #333; font-weight: bold;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #666;">🔄 Backup: {row['Backup']}</span><br>
-        <span title="Próximo na linha: {row['Backup3']}" style="font-size: 13px; color: #777; cursor: help; display: block; margin-top: 3px;">🛡️ Backup 2: {row['Backup2']}</span><br>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO ---
 if check_login():
     nomes_lista = carregar_nomes()
     if nomes_lista:
         st.sidebar.title("⚙️ Configurações")
-        acessibilidade = st.sidebar.toggle("♿ Ativar Leitura (Acessibilidade)", value=False)
-        if acessibilidade: injetar_leitor_acessibilidade()
-
-        df_total = gerar_escala_final(nomes_lista)
-        st.title(f"🚀 MMD | Dashboard de Apresentações {datetime.now().year}")
+        acess = st.sidebar.toggle("♿ Ativar Acessibilidade", value=False)
+        if acess: injetar_leitor_acessibilidade()
         
-        # BUSCA INDIVIDUAL
+        df_total = gerar_escala_final(nomes_lista)
+        st.title(f"🚀 MMD | Escala {datetime.now().year}")
+        
+        # --- SEÇÃO DE EXPORTAÇÃO ---
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            with st.expander("📂 Exportar Mês Específico"):
+                mes_sel = st.selectbox("Selecione o Mês:", list(MESES_NOMES.keys()))
+                df_total['dt_aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
+                df_mes = df_total[df_total['dt_aux'].dt.month == MESES_NOMES[mes_sel]].copy()
+                if not df_mes.empty:
+                    excel_m = converter_para_excel(preparar_df_estruturado(df_mes))
+                    st.download_button(f"📥 Baixar Escala de {mes_sel}", excel_m, f"Escala_MMD_{mes_sel}.xlsx")
+
+        with col_exp2:
+            with st.expander("📅 Exportar Ano Completo"):
+                st.write("Gera um arquivo único com todos os meses do ano.")
+                df_ano_estruturado = preparar_df_estruturado(df_total)
+                excel_a = converter_para_excel(df_ano_estruturado)
+                st.download_button("📥 Baixar Escala Anual Completa", excel_a, f"Escala_MMD_Anual_{datetime.now().year}.xlsx")
+
+        st.divider()
+        # Busca Individual e View Semanal seguem abaixo...
         filtro_nome = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes_lista)
         if filtro_nome != "Todos":
             df_p = df_total[df_total["Apresentador"] == filtro_nome].copy()
-            df_exibir = df_p[["Data", "Dia", "Reunião", "Backup", "Semana", "Link"]]
-            st.info(f"📊 {filtro_nome} tem **{len(df_exibir)}** apresentações.")
-            st.dataframe(df_exibir, column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar no Outlook")}, use_container_width=True, hide_index=True)
-            excel_indiv = converter_para_excel(df_exibir.drop(columns=["Link"]))
-            st.download_button(label=f"📥 Baixar escala de {filtro_nome} (.xlsx)", data=excel_indiv, file_name=f'Escala_{filtro_nome}.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-            st.divider()
+            st.info(f"📊 {filtro_nome} tem **{len(df_p)}** apresentações no ano.")
+            st.dataframe(df_p[["Data", "Dia", "Reunião", "Backup", "Link"]], column_config={"Link": st.column_config.LinkColumn("📅 Agendar", display_text="Agendar")}, use_container_width=True, hide_index=True)
 
-        # EXTRAÇÃO MENSAL
-        with st.expander("📂 Extrair Planilha Mensal (Flash Manhã vs Tarde)"):
-            mes_sel = st.selectbox("Selecione o mês:", list(MESES_NOMES.keys()))
-            df_total['Data_Aux'] = pd.to_datetime(df_total['Data'], format='%d/%m/%Y')
-            df_mes_raw = df_total[df_total['Data_Aux'].dt.month == MESES_NOMES[mes_sel]].copy()
-            if not df_mes_raw.empty:
-                df_mes_final = preparar_df_mensal_estruturado(df_mes_raw)
-                st.write(f"✅ Escala dinâmica de {mes_sel} pronta (Lógica de Herança ativada).")
-                excel_mensal = converter_para_excel(df_mes_final)
-                st.download_button(label=f"💾 Baixar Escala Consolidada {mes_sel} (.xlsx)", data=excel_mensal, file_name=f'Escala_MMD_{mes_sel}_Completa.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
         st.divider()
-
-        # VIEW SEMANAL
-        sem_atual = datetime.now().isocalendar()[1]
-        sem_busca = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=sem_atual)
-        df_semana = df_total[df_total["Semana"] == sem_busca]
-        for d_label, group in df_semana.groupby("Data", sort=False):
-            st.markdown(f"**{group['Dia'].iloc[0]} - {d_label}**")
-            cols = st.columns(len(group))
-            for i, (_, row) in enumerate(group.iterrows()):
-                with cols[i]: renderizar_card(row)
+        sem_busca = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
+        df_sem = df_total[df_total["Semana"] == sem_busca]
+        for d, g in df_sem.groupby("Data", sort=False):
+            st.markdown(f"**{g['Dia'].iloc[0]} - {d}**")
+            cols = st.columns(len(g))
+            for i, (_, r) in enumerate(g.iterrows()):
+                with cols[i]: renderizar_card(r)
