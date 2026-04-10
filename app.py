@@ -89,7 +89,7 @@ def check_login():
         return False
     return True
 
-# --- MOTOR DE REGRAS (EQUILIBRADO) ---
+# --- MOTOR DE REGRAS ---
 def gerar_escala_balanceada(nomes):
     random.seed(42)
     fila_base = nomes.copy()
@@ -127,7 +127,7 @@ def gerar_escala_balanceada(nomes):
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject=Flash%20Manhã&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
 
-        # Tarde (DOR ou FLASH)
+        # Tarde
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
         if tipo_t == "DOR":
             cand_t = [n for n in nomes_dor if n not in quem_ja_foi]
@@ -149,7 +149,7 @@ def gerar_escala_balanceada(nomes):
             
     return pd.DataFrame(escala)
 
-# --- EXPORTAÇÃO COM MESCLAGEM DE MÊS ---
+# --- EXPORTAÇÃO FORMATO SEGUNDA IMAGEM (MESCLAGEM HORIZONTAL) ---
 def exportar_excel_limpo(df_total, mes_nome=None):
     output = io.BytesIO()
     df_c = df_total.copy()
@@ -167,30 +167,32 @@ def exportar_excel_limpo(df_total, mes_nome=None):
         df_f = df_f[df_f['Mês'] == mes_nome]
 
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_f = df_f[['Mês', 'Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']]
-        df_f.to_excel(writer, index=False, sheet_name='Escala')
-        
         workbook = writer.book
-        worksheet = writer.sheets['Escala']
+        worksheet = workbook.add_worksheet('Escala')
         
-        # Formatações
+        # Formatos
         h_fmt = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1, 'align': 'center'})
-        c_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        c_fmt = workbook.add_format({'border': 1, 'align': 'center'})
         
-        for col_num, value in enumerate(df_f.columns.values):
-            worksheet.write(0, col_num, value, h_fmt)
-            worksheet.set_column(col_num, col_num, 20)
+        cols = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
+        for idx, col in enumerate(cols):
+            worksheet.write(0, idx, col, h_fmt)
+            worksheet.set_column(idx, idx, 20)
 
-        # Lógica de Mesclagem
-        lista_meses = df_f['Mês'].tolist()
-        inicio = 0
-        for i in range(len(lista_meses)):
-            if i == len(lista_meses) - 1 or lista_meses[i] != lista_meses[i+1]:
-                if inicio != i:
-                    worksheet.merge_range(inicio + 1, 0, i + 1, 0, lista_meses[i], c_fmt)
-                else:
-                    worksheet.write(inicio + 1, 0, lista_meses[i], c_fmt)
-                inicio = i + 1
+        row_idx = 1
+        mes_atual = ""
+        
+        for _, row in df_f.iterrows():
+            if row['Mês'] != mes_atual:
+                mes_atual = row['Mês']
+                # Mescla horizontalmente como na imagem 2
+                worksheet.merge_range(row_idx, 0, row_idx, 6, mes_atual.upper(), m_fmt)
+                row_idx += 1
+            
+            for col_idx, col_name in enumerate(cols):
+                worksheet.write(row_idx, col_idx, row[col_name], c_fmt)
+            row_idx += 1
                 
     return output.getvalue()
 
@@ -208,21 +210,19 @@ def renderizar_card(row):
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO PRINCIPAL ---
+# --- EXECUÇÃO ---
 if check_login():
     try:
         df_csv = pd.read_csv(SHEET_URL)
         nomes = sorted([n for n in df_csv['Funcionario'].dropna().unique() if n not in ["Faiha", "Sonia", "Enrique", "Bianca S."]])
     except: nomes = list(MAPA_REFERENCIA.keys())
 
-    # --- SIDEBAR COM ROTEIRO DETALHADO RESTAURADO ---
+    # --- SIDEBAR COM ROTEIRO COMPLETO ---
     st.sidebar.title("⚙️ Painel")
     if st.sidebar.toggle("Ativar Acessibilidade", value=False):
         injetar_leitor_acessibilidade()
     
     st.sidebar.divider()
-    
-    # ROTEIRO TERÇA-FEIRA
     with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas", expanded=True):
         st.markdown("""
         **Pauta Principal:** Práticas + Iniciativas + Tracker + Work Plan
@@ -241,7 +241,6 @@ if check_login():
         - 🏆 Behavior (Reconhecimento e notas)
         """)
 
-    # ROTEIRO QUINTA-FEIRA
     with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA", expanded=True):
         st.markdown("""
         **Pauta Principal:** Lead Time e SLA + FTR + CATS/BH + Workplan
@@ -273,24 +272,10 @@ if check_login():
             st.download_button("Baixar Ano Completo", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
 
     st.divider()
-    
-    # --- BUSCA COM COLUNAS OTIMIZADAS ---
     busca = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes)
     if busca != "Todos":
         df_b = df_total[df_total["Apresentador"] == busca].copy()
-        st.info(f"📊 {busca}: {len(df_b[df_b['Reunião']=='DOR'])} reuniões DOR no ano.")
-        
-        st.dataframe(
-            df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "BackupOculto", "Link"]], 
-            column_config={
-                "Data": st.column_config.Column(width="small"),
-                "Dia": st.column_config.Column(width="small"),
-                "Reunião": st.column_config.Column(width="medium"),
-                "Backup": st.column_config.Column(width="medium"),
-                "Link": st.column_config.LinkColumn("Calendário", display_text="📅 Agendar", width="small")
-            }, 
-            use_container_width=True, hide_index=True
-        )
+        st.dataframe(df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], use_container_width=True, hide_index=True)
 
     st.divider()
     s_idx = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
