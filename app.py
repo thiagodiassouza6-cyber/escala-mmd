@@ -89,7 +89,7 @@ def check_login():
         return False
     return True
 
-# --- MOTOR DE REGRAS ---
+# --- MOTOR DE REGRAS (EQUILIBRADO) ---
 def gerar_escala_balanceada(nomes):
     random.seed(42)
     fila_base = nomes.copy()
@@ -112,18 +112,22 @@ def gerar_escala_balanceada(nomes):
         
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         
+        # Flash Manhã
         candidatos_m = [n for n in fila_base if n not in quem_ja_foi]
         ap_m = min(candidatos_m, key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
         quem_ja_foi.append(ap_m)
         
         b1_m = encontrar_backup_vivo(ap_m, nomes)
+        b2_m = encontrar_backup_vivo(b1_m, nomes)
+        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": "Flash Manhã",
-            "Apresentador": ap_m, "Backup": b1_m, "Backup2": encontrar_backup_vivo(b1_m, nomes),
+            "Apresentador": ap_m, "Backup": b1_m, "Backup2": b2_m, "BackupOculto": encontrar_backup_vivo(b2_m, nomes),
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject=Flash%20Manhã&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
 
+        # Tarde (DOR ou FLASH)
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
         if tipo_t == "DOR":
             cand_t = [n for n in nomes_dor if n not in quem_ja_foi]
@@ -135,9 +139,11 @@ def gerar_escala_balanceada(nomes):
         
         cont_total[ap_t] += 1
         b1_t = encontrar_backup_vivo(ap_t, nomes)
+        b2_t = encontrar_backup_vivo(b1_t, nomes)
+        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": tipo_t,
-            "Apresentador": ap_t, "Backup": b1_t, "Backup2": encontrar_backup_vivo(b1_t, nomes),
+            "Apresentador": ap_t, "Backup": b1_t, "Backup2": b2_t, "BackupOculto": encontrar_backup_vivo(b2_t, nomes),
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={tipo_t}&startdt={dia.strftime('%Y-%m-%d')}T15:00:00"
         })
             
@@ -188,43 +194,71 @@ def exportar_excel_limpo(df_total, mes_nome=None):
                 
     return output.getvalue()
 
-# --- CARD COM BACKUP 2 OCULTO (HOVER) ---
+# --- CARD COM BACKUP 2 VISÍVEL E OCULTO NO HOVER ---
 def renderizar_card(row):
     st.markdown(f"""
-    <style>
-        .card-mmd {{ background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 220px; margin-bottom: 10px; transition: 0.3s; }}
-        .backup2-info {{ color: transparent; transition: 0.3s; font-size: 13px; font-weight: normal; }}
-        .card-mmd:hover .backup2-info {{ color: #777; }}
-    </style>
-    <div class="card-mmd">
-        <b style="font-size: 14px; color: #444;">{row['Reunião']}</b><br><br>
+    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 220px; margin-bottom: 10px; color: #333;">
+        <b style="font-size: 14px; color: #555;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; font-weight: bold; color: #111;">🏆 {row['Apresentador']}</span><br><br>
-        <span style="font-size: 13px; color: #333;">🔄 Backup: {row['Backup']}</span><br>
-        <span class="backup2-info">🛡️ Backup 2: {row['Backup2']}</span>
+        <span style="font-size: 13px; color: #444;">🔄 Backup: {row['Backup']}</span><br>
+        <span title="Backup Oculto: {row['BackupOculto']}" style="font-size: 13px; color: #444; cursor: help;">🛡️ Backup 2: {row['Backup2']}</span>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO ---
+# --- EXECUÇÃO PRINCIPAL ---
 if check_login():
     try:
         df_csv = pd.read_csv(SHEET_URL)
         nomes = sorted([n for n in df_csv['Funcionario'].dropna().unique() if n not in ["Faiha", "Sonia", "Enrique", "Bianca S."]])
     except: nomes = list(MAPA_REFERENCIA.keys())
 
-    # --- SIDEBAR ---
+    # --- SIDEBAR COM ROTEIRO DETALHADO RESTAURADO ---
     st.sidebar.title("⚙️ Painel")
-    if st.sidebar.toggle("♿ Ativar Acessibilidade"):
+    if st.sidebar.toggle("Ativar Acessibilidade", value=False):
         injetar_leitor_acessibilidade()
     
     st.sidebar.divider()
-    with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas"):
-        st.markdown("- Lista de presença\n- Timekeeper\n- Escala\n- Behavior\n- Práticas\n- NPS\n- Tracker/Workplan")
+    
+    # ROTEIRO TERÇA-FEIRA
+    with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas", expanded=True):
+        st.markdown("""
+        **Pauta Principal:** Práticas + Iniciativas + Tracker + Work Plan
+        - 📑 Lista de presença
+        - ⏱ Pergunta Timekeeper (Challenge & Engage)
+        - 🗓 Escala de horário
+        - 📈 Behavior (Notas reunião anterior)
+        - 🎯 Plano de ação (Ações do dia)
+        - ✅ Práticas (Verificar com responsáveis)
+        - 📊 NPS
+        - 💡 Iniciativas (Comentários individuais)
+        - 📉 Tracker
+        - 🛠 Work Plan
+        - ⚠️ Plano de ação (Issues e priorização)
+        - 🛡 SHE
+        - 🏆 Behavior (Reconhecimento e notas)
+        """)
 
-    with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA"):
-        st.markdown("- Lista de presença\n- Timekeeper\n- Lead Time/SLA\n- FTR\n- Cats+BH\n- Workplan\n- Issues")
+    # ROTEIRO QUINTA-FEIRA
+    with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA", expanded=True):
+        st.markdown("""
+        **Pauta Principal:** Lead Time e SLA + FTR + CATS/BH + Workplan
+        - 📑 Lista de presença
+        - ⏱ Pergunta Timekeeper, Challenger & Engage
+        - 🗓 Escala de horário
+        - 📈 Behavior (Notas reunião anterior)
+        - 🎯 Plano de ação (Ações do dia)
+        - 🕒 Lead Time
+        - ✅ FTR (Bianca ou Renan)
+        - 📁 Cats+BH (Amanda)
+        - 🛠 Work Plan
+        - ⚠️ Issues
+        - 📍 Plano de ação (Priorizar: A, M, B)
+        - 🛡 SHE
+        - 🏆 Behavior (Reconhecimento e notas)
+        """)
 
     df_total = gerar_escala_balanceada(nomes)
     st.title(f"🚀 MMD | Portal de Escalas 2026")
@@ -240,12 +274,19 @@ if check_login():
 
     st.divider()
     
+    # --- BUSCA COM COLUNAS OTIMIZADAS ---
     busca = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes)
     if busca != "Todos":
         df_b = df_total[df_total["Apresentador"] == busca].copy()
+        st.info(f"📊 {busca}: {len(df_b[df_b['Reunião']=='DOR'])} reuniões DOR no ano.")
+        
         st.dataframe(
-            df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], 
+            df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "BackupOculto", "Link"]], 
             column_config={
+                "Data": st.column_config.Column(width="small"),
+                "Dia": st.column_config.Column(width="small"),
+                "Reunião": st.column_config.Column(width="medium"),
+                "Backup": st.column_config.Column(width="medium"),
                 "Link": st.column_config.LinkColumn("Calendário", display_text="📅 Agendar", width="small")
             }, 
             use_container_width=True, hide_index=True
