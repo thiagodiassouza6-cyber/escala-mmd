@@ -9,7 +9,7 @@ import random
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Portal de Escalas", layout="wide")
 
-# --- DICIONÁRIO DE TRADUÇÃO (INCLUINDO FLASH MAÑANA E VOZ) ---
+# --- DICIONÁRIO DE TRADUÇÃO (ATUALIZADO COM PAUTAS DETALHADAS) ---
 I18N = {
     "PT": {
         "lang_code": "pt-BR",
@@ -39,7 +39,24 @@ I18N = {
         "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mês",
         "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
-        "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
+        "pauta": {
+            "lista": "📑 Lista de presença",
+            "tk": "⏱ Timekeeper",
+            "escala": "🗓 Escala",
+            "behavior": "📈 Behavior",
+            "plan": "🎯 Plano de ação",
+            "prac": "✅ Práticas",
+            "nps": "📊 NPS",
+            "ini": "💡 Iniciativas",
+            "track": "📉 Tracker",
+            "work": "🛠 Work Plan",
+            "issue": "⚠️ Issues",
+            "she": "🛡 SHE",
+            "lt": "🕒 Lead Time",
+            "ftr": "✅ FTR",
+            "cats": "📁 Cats+BH"
+        }
     },
     "ES": {
         "lang_code": "es-ES",
@@ -69,7 +86,24 @@ I18N = {
         "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mes",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "pauta": {
+            "lista": "📑 Lista de presencia",
+            "tk": "⏱ Timekeeper",
+            "escala": "🗓 Escala Horario",
+            "behavior": "📈 Behavior",
+            "plan": "🎯 Plan de accion",
+            "prac": "✅ Practicas",
+            "nps": "📊 NPS",
+            "ini": "💡 Iniciativas",
+            "track": "📉 Tracker",
+            "work": "🛠 Work Plan",
+            "issue": "⚠️ Issues",
+            "she": "🛡 SHE",
+            "lt": "🕒 Lead Time",
+            "ftr": "✅ FTR",
+            "cats": "📁 Cats+BH"
+        }
     }
 }
 
@@ -78,7 +112,7 @@ if "lang" not in st.session_state:
 
 t = I18N[st.session_state.lang]
 
-# --- ACESSIBILIDADE COM VOZ DINÂMICA ---
+# --- ACESSIBILIDADE ---
 def injetar_leitor_acessibilidade(lang_code):
     components.html(f"""
         <script>
@@ -106,7 +140,7 @@ def injetar_leitor_acessibilidade(lang_code):
         </script>
     """, height=0, width=0)
 
-# --- CONSTANTES E MOTOR (MANTIDOS) ---
+# --- MOTOR DE REGRAS E FUNÇÕES AUXILIARES (LÓGICA PRESERVADA) ---
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
@@ -199,8 +233,10 @@ def exportar_excel_limpo(df_total, mes_nome=None):
     df_c['dt_obj'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
     meses_map = {i+1: nome for i, nome in enumerate(t["meses"])}
     df_c['Mês'] = df_c['dt_obj'].dt.month.map(meses_map)
+    
     m = df_c[df_c['Reunião'] == t['flash_m']][['Mês', 'Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':t['resp_m'], 'Backup':t['backup'] + ' M'})
     t_df = df_c[df_c['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].rename(columns={'Apresentador':t['resp_t'], 'Backup':t['backup'] + ' T', 'Reunião':t['tipo_t']})
+    
     df_f = pd.merge(m, t_df, on='Data', how='outer').fillna("")
     df_f['dt_sort'] = pd.to_datetime(df_f['Data'], format='%d/%m/%Y')
     df_f = df_f.sort_values('dt_sort')
@@ -250,13 +286,15 @@ if check_login():
         injetar_leitor_acessibilidade(t["lang_code"])
     
     st.sidebar.divider()
+    # ROTEIRO TERÇA
     with st.sidebar.expander(t["roteiro_ter"], expanded=True):
-        st.markdown("**Pauta:** Práticas + Iniciativas + Tracker + Work Plan" if st.session_state.lang == "PT" else "**Pauta:** Prácticas + Iniciativas + Tracker + Work Plan")
-        st.markdown("- 📑 Lista de presença\n- ⏱ Timekeeper\n- 🗓 Escala\n- 📈 Behavior\n- 🎯 Plano de ação\n- ✅ Práticas\n- 📊 NPS\n- 💡 Iniciativas\n- 📉 Tracker\n- 🛠 Work Plan\n- ⚠️ Issues\n- 🛡 SHE\n- 🏆 Behavior")
+        st.markdown(f"**Pauta:** {t['pauta']['prac']} + {t['pauta']['ini']} + {t['pauta']['track']} + {t['pauta']['work']}")
+        st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['prac']}\n- {t['pauta']['nps']}\n- {t['pauta']['ini']}\n- {t['pauta']['track']}\n- {t['pauta']['work']}\n- {t['pauta']['plan']} ({t['pauta']['issue']})\n- 🛡 SHE\n- 🏆 Behavior")
 
+    # ROTEIRO QUINTA
     with st.sidebar.expander(t["roteiro_qui"], expanded=True):
-        st.markdown("**Pauta:** Lead Time e SLA + FTR + CATS/BH + Workplan" if st.session_state.lang == "PT" else "**Pauta:** Lead Time y SLA + FTR + CATS/BH + Workplan")
-        st.markdown("- 📑 Lista de presença\n- ⏱ Timekeeper\n- 🗓 Escala\n- 📈 Behavior\n- 🎯 Plano de ação\n- 🕒 Lead Time\n- ✅ FTR\n- 📁 Cats+BH\n- 🛠 Work Plan\n- ⚠️ Issues\n- 🛡 SHE\n- 🏆 Behavior")
+        st.markdown(f"**Pauta:** {t['pauta']['lt']} + {t['pauta']['ftr']} + {t['pauta']['cats']} + {t['pauta']['work']}")
+        st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['lt']}\n- {t['pauta']['ftr']}\n- {t['pauta']['cats']}\n- {t['pauta']['work']}\n- {t['pauta']['issue']}\n- {t['pauta']['plan']}\n- 🛡 SHE\n- 🏆 Behavior")
 
     try:
         df_csv = pd.read_csv(SHEET_URL)
