@@ -9,7 +9,7 @@ import random
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Portal de Escalas", layout="wide")
 
-# --- DICIONÁRIO DE TRADUÇÃO ---
+# --- DICIONÁRIO DE TRADUÇÃO (ATUALIZADO COM DIAS DA SEMANA) ---
 I18N = {
     "PT": {
         "titulo": "🚀 MMD | Portal de Escalas 2026",
@@ -35,7 +35,9 @@ I18N = {
         "resp_m": "Responsável Manhã",
         "resp_t": "Responsável Tarde",
         "tipo_t": "Tipo Tarde/DOR",
-        "mes_col": "Mês"
+        "mes_col": "Mês",
+        "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
+        "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     },
     "ES": {
         "titulo": "🚀 MMD | Portal de Escalas 2026",
@@ -61,15 +63,15 @@ I18N = {
         "resp_m": "Responsable Mañana",
         "resp_t": "Responsable Tarde",
         "tipo_t": "Tipo Tarde/DOR",
-        "mes_col": "Mes"
+        "mes_col": "Mes",
+        "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
+        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     }
 }
 
-# --- SELEÇÃO DE IDIOMA ---
 if "lang" not in st.session_state:
     st.session_state.lang = "PT"
 
-# Variável de atalho para os textos
 t = I18N[st.session_state.lang]
 
 # --- CONSTANTES ---
@@ -77,13 +79,6 @@ SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
-
-MESES_NOMES = {
-    "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, 
-    "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, 
-    "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
-}
-MESES_REVERSO = {v: k for k, v in MESES_NOMES.items()}
 
 MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
@@ -132,16 +127,19 @@ def gerar_escala_balanceada(nomes):
     cont_total = {n: 0 for n in nomes}
     cont_dor = {n: 0 for n in nomes_dor}
     ano = datetime.now().year
-    dias = pd.date_range(datetime(ano, 1, 1), datetime(ano, 12, 31), freq='B')
+    dias_range = pd.date_range(datetime(ano, 1, 1), datetime(ano, 12, 31), freq='B')
     escala = []
     
-    for dia in dias:
+    for dia in dias_range:
         data_s = dia.strftime("%d/%m/%Y")
         sem = dia.isocalendar()[1]
         d_sem = dia.weekday()
-        d_nome = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"][d_sem]
+        # Aqui pegamos o nome do dia baseado no idioma
+        d_nome = t["dias"][d_sem]
+        
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         
+        # Flash Manhã
         candidatos_m = [n for n in fila_base if n not in quem_ja_foi]
         ap_m = min(candidatos_m, key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
@@ -180,7 +178,10 @@ def exportar_excel_limpo(df_total, mes_nome=None):
     output = io.BytesIO()
     df_c = df_total.copy()
     df_c['dt_obj'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
-    df_c['Mês'] = df_c['dt_obj'].dt.month.map(MESES_REVERSO)
+    
+    # Mapeamento de meses para a exportação
+    meses_map = {i+1: nome for i, nome in enumerate(t["meses"])}
+    df_c['Mês'] = df_c['dt_obj'].dt.month.map(meses_map)
     
     m = df_c[df_c['Reunião'] == 'Flash Manhã'][['Mês', 'Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':t['resp_m'], 'Backup':t['backup'] + ' M'})
     t_df = df_c[df_c['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].rename(columns={'Apresentador':t['resp_t'], 'Backup':t['backup'] + ' T', 'Reunião':t['tipo_t']})
@@ -230,20 +231,15 @@ def renderizar_card(row):
 
 # --- EXECUÇÃO ---
 if check_login():
-    # BARRA LATERAL - SELETOR DE IDIOMA
     st.sidebar.title("🌐 Idioma / Lenguaje")
-    lang_opt = st.sidebar.radio("Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
+    lang_opt = st.sidebar.radio("Seleccione / Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
     new_lang = "PT" if "Português" in lang_opt else "ES"
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
         st.rerun()
 
     st.sidebar.divider()
-    if st.sidebar.toggle(t["acessibilidade"], value=False):
-        # (Função de acessibilidade injetada aqui se necessário)
-        pass
     
-    st.sidebar.divider()
     with st.sidebar.expander(t["roteiro_ter"], expanded=True):
         if st.session_state.lang == "PT":
             st.markdown("**Pauta:** Práticas + Iniciativas + Tracker + Work Plan\n- 📑 Lista de presença\n- ⏱ Pergunta Timekeeper\n- 🗓 Escala\n- 📈 Behavior\n- 🎯 Plano de ação\n- ✅ Práticas\n- 📊 NPS\n- 💡 Iniciativas\n- 📉 Tracker\n- 🛠 Work Plan\n- ⚠️ Plano de ação (Issues)\n- 🛡 SHE\n- 🏆 Behavior")
@@ -267,11 +263,11 @@ if check_login():
     col_e1, col_e2 = st.columns(2)
     with col_e1:
         with st.expander(t["exp_mes"]):
-            m_sel = st.selectbox(t["mes_col"] + ":", list(MESES_NOMES.keys()))
+            m_sel = st.selectbox(t["mes_col"] + ":", t["meses"])
             st.download_button(f"{t['baixar']} {m_sel}", exportar_excel_limpo(df_total, m_sel), f"Escala_{m_sel}.xlsx", use_container_width=True)
     with col_e2:
         with st.expander(t["exp_ano"]):
-            st.download_button(t["baixar"] + " Ano Completo", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
+            st.download_button(t["baixar"] + f" {t['mes_col']} Completo", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
 
     st.divider()
     busca = st.selectbox(t["buscar"], [t["todos"]] + nomes)
