@@ -21,6 +21,8 @@ MESES_NOMES = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
+MESES_REVERSO = {v: k for k, v in MESES_NOMES.items()}
+
 # MAPA DE HERANÇA
 MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
@@ -141,43 +143,64 @@ def gerar_escala_balanceada(nomes):
             
     return pd.DataFrame(escala)
 
-# --- EXPORTAÇÃO ---
+# --- EXPORTAÇÃO COM MESCLAGEM DE MÊS ---
 def exportar_excel_limpo(df_total, mes_nome=None):
     output = io.BytesIO()
     df_c = df_total.copy()
-    df_c['dt_aux'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
+    df_c['dt_obj'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
+    df_c['Mês'] = df_c['dt_obj'].dt.month.map(MESES_REVERSO)
     
-    m = df_c[df_c['Reunião'] == 'Flash Manhã'][['Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':'Responsável Manhã', 'Backup':'Backup Manhã'})
+    m = df_c[df_c['Reunião'] == 'Flash Manhã'][['Mês', 'Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':'Responsável Manhã', 'Backup':'Backup Manhã'})
     t = df_c[df_c['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].rename(columns={'Apresentador':'Responsável Tarde', 'Backup':'Backup Tarde', 'Reunião':'Tipo Tarde/DOR'})
     
     df_f = pd.merge(m, t, on='Data', how='outer').fillna("")
-    df_f['dt_obj'] = pd.to_datetime(df_f['Data'], format='%d/%m/%Y')
-    df_f = df_f.sort_values('dt_obj')
-    
-    if mes_nome: df_f = df_f[df_f['dt_obj'].dt.month == MESES_NOMES[mes_nome]]
+    df_f['dt_sort'] = pd.to_datetime(df_f['Data'], format='%d/%m/%Y')
+    df_f = df_f.sort_values('dt_sort')
+
+    if mes_nome:
+        df_f = df_f[df_f['Mês'] == mes_nome]
 
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        sheet = writer.book.add_worksheet('Escala')
-        h_fmt = writer.book.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1})
-        c_fmt = writer.book.add_format({'border': 1})
+        df_f = df_f[['Mês', 'Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']]
+        df_f.to_excel(writer, index=False, sheet_name='Escala')
         
-        cols = ['Data', 'Dia', 'Responsável Manhã', 'Backup Manhã', 'Tipo Tarde/DOR', 'Responsável Tarde', 'Backup Tarde']
-        for i, v in enumerate(cols): 
-            sheet.write(0, i, v, h_fmt)
-            sheet.set_column(i, i, 18)
-            
-        for r_idx, (_, r) in enumerate(df_f.iterrows(), 1):
-            for c_idx, col in enumerate(cols):
-                sheet.write(r_idx, c_idx, str(r[col]), c_fmt)
+        workbook = writer.book
+        worksheet = writer.sheets['Escala']
+        
+        # Formatações
+        h_fmt = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        c_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        
+        for col_num, value in enumerate(df_f.columns.values):
+            worksheet.write(0, col_num, value, h_fmt)
+            worksheet.set_column(col_num, col_num, 20)
+
+        # Lógica de Mesclagem
+        lista_meses = df_f['Mês'].tolist()
+        inicio = 0
+        for i in range(len(lista_meses)):
+            if i == len(lista_meses) - 1 or lista_meses[i] != lista_meses[i+1]:
+                if inicio != i:
+                    worksheet.merge_range(inicio + 1, 0, i + 1, 0, lista_meses[i], c_fmt)
+                else:
+                    worksheet.write(inicio + 1, 0, lista_meses[i], c_fmt)
+                inicio = i + 1
+                
     return output.getvalue()
 
+# --- CARD COM BACKUP 2 OCULTO (HOVER) ---
 def renderizar_card(row):
     st.markdown(f"""
-    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 200px; margin-bottom: 10px;">
+    <style>
+        .card-mmd {{ background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; min-height: 220px; margin-bottom: 10px; transition: 0.3s; }}
+        .backup2-info {{ color: transparent; transition: 0.3s; font-size: 13px; font-weight: normal; }}
+        .card-mmd:hover .backup2-info {{ color: #777; }}
+    </style>
+    <div class="card-mmd">
         <b style="font-size: 14px; color: #444;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; font-weight: bold; color: #111;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #333;">🔄 Backup: {row['Backup']}</span><br>
-        <span style="font-size: 13px; color: #333;">🛡️ Backup 2: {row['Backup2']}</span>
+        <span class="backup2-info">🛡️ Backup 2: {row['Backup2']}</span>
         <div style="margin-top: 15px;">
             <a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">📅 AGENDAR</a>
         </div>
@@ -191,53 +214,20 @@ if check_login():
         nomes = sorted([n for n in df_csv['Funcionario'].dropna().unique() if n not in ["Faiha", "Sonia", "Enrique", "Bianca S."]])
     except: nomes = list(MAPA_REFERENCIA.keys())
 
-    # --- SIDEBAR COM ROTEIRO DE APRESENTAÇÃO ---
+    # --- SIDEBAR ---
     st.sidebar.title("⚙️ Painel")
     if st.sidebar.toggle("♿ Ativar Acessibilidade"):
         injetar_leitor_acessibilidade()
     
     st.sidebar.divider()
-    
-    # ROTEIRO TERÇA-FEIRA
-    with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas", expanded=False):
-        st.markdown("""
-        **Pauta Principal:** Práticas + Iniciativas + Tracker + Work Plan
-        - 📑 Lista de presença
-        - ⏱ Pergunta Timekeeper (Challenge & Engage)
-        - 🗓 Escala de horário
-        - 📈 Behavior (Notas reunião anterior)
-        - 🎯 Plano de ação (Ações do dia)
-        - ✅ Práticas (Verificar com responsáveis)
-        - 📊 NPS
-        - 💡 Iniciativas (Comentários individuais)
-        - 📉 Tracker
-        - 🛠 Work Plan
-        - ⚠️ Plano de ação (Issues e priorização)
-        - 🛡 SHE
-        - 🏆 Behavior (Reconhecimento e notas)
-        """)
+    with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas"):
+        st.markdown("- Lista de presença\n- Timekeeper\n- Escala\n- Behavior\n- Práticas\n- NPS\n- Tracker/Workplan")
 
-    # ROTEIRO QUINTA-FEIRA
-    with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA", expanded=False):
-        st.markdown("""
-        **Pauta Principal:** Lead Time e SLA + FTR + CATS/BH + Workplan
-        - 📑 Lista de presença
-        - ⏱ Pergunta Timekeeper, Challenger & Engage
-        - 🗓 Escala de horário
-        - 📈 Behavior (Notas reunião anterior)
-        - 🎯 Plano de ação (Ações do dia)
-        - 🕒 Lead Time
-        - ✅ FTR (Bianca ou Renan)
-        - 📁 Cats+BH (Amanda)
-        - 🛠 Work Plan
-        - ⚠️ Issues
-        - 📍 Plano de ação (Priorizar: A, M, B)
-        - 🛡 SHE
-        - 🏆 Behavior (Reconhecimento e notas)
-        """)
+    with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA"):
+        st.markdown("- Lista de presença\n- Timekeeper\n- Lead Time/SLA\n- FTR\n- Cats+BH\n- Workplan\n- Issues")
 
     df_total = gerar_escala_balanceada(nomes)
-    st.title(f"🚀 MMD | Portal de Escalas {datetime.now().year}")
+    st.title(f"🚀 MMD | Portal de Escalas 2026")
 
     col_e1, col_e2 = st.columns(2)
     with col_e1:
@@ -254,12 +244,8 @@ if check_login():
     if busca != "Todos":
         df_b = df_total[df_total["Apresentador"] == busca].copy()
         st.dataframe(
-            df_b[["Data", "Dia", "Reunião", "Backup", "Link"]], 
+            df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], 
             column_config={
-                "Data": st.column_config.Column(width="small"),
-                "Dia": st.column_config.Column(width="small"),
-                "Reunião": st.column_config.Column(width="medium"),
-                "Backup": st.column_config.Column(width="medium"),
                 "Link": st.column_config.LinkColumn("Calendário", display_text="📅 Agendar", width="small")
             }, 
             use_container_width=True, hide_index=True
