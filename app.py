@@ -170,7 +170,6 @@ def exportar_excel_limpo(df_total, mes_nome=None):
         workbook = writer.book
         worksheet = workbook.add_worksheet('Escala')
         
-        # Formatos
         h_fmt = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1, 'align': 'center'})
         m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
         c_fmt = workbook.add_format({'border': 1, 'align': 'center'})
@@ -182,14 +181,11 @@ def exportar_excel_limpo(df_total, mes_nome=None):
 
         row_idx = 1
         mes_atual = ""
-        
         for _, row in df_f.iterrows():
             if row['Mês'] != mes_atual:
                 mes_atual = row['Mês']
-                # Mescla horizontalmente como na imagem 2
                 worksheet.merge_range(row_idx, 0, row_idx, 6, mes_atual.upper(), m_fmt)
                 row_idx += 1
-            
             for col_idx, col_name in enumerate(cols):
                 worksheet.write(row_idx, col_idx, row[col_name], c_fmt)
             row_idx += 1
@@ -217,47 +213,15 @@ if check_login():
         nomes = sorted([n for n in df_csv['Funcionario'].dropna().unique() if n not in ["Faiha", "Sonia", "Enrique", "Bianca S."]])
     except: nomes = list(MAPA_REFERENCIA.keys())
 
-    # --- SIDEBAR COM ROTEIRO COMPLETO ---
+    # SIDEBAR
     st.sidebar.title("⚙️ Painel")
     if st.sidebar.toggle("Ativar Acessibilidade", value=False):
         injetar_leitor_acessibilidade()
-    
     st.sidebar.divider()
     with st.sidebar.expander("📝 Roteiro Terça: Práticas + Iniciativas", expanded=True):
-        st.markdown("""
-        **Pauta Principal:** Práticas + Iniciativas + Tracker + Work Plan
-        - 📑 Lista de presença
-        - ⏱ Pergunta Timekeeper (Challenge & Engage)
-        - 🗓 Escala de horário
-        - 📈 Behavior (Notas reunião anterior)
-        - 🎯 Plano de ação (Ações do dia)
-        - ✅ Práticas (Verificar com responsáveis)
-        - 📊 NPS
-        - 💡 Iniciativas (Comentários individuais)
-        - 📉 Tracker
-        - 🛠 Work Plan
-        - ⚠️ Plano de ação (Issues e priorização)
-        - 🛡 SHE
-        - 🏆 Behavior (Reconhecimento e notas)
-        """)
-
+        st.markdown("**Pauta:** Práticas + Iniciativas + Tracker + Work Plan\n- 📑 Lista de presença\n- ⏱ Pergunta Timekeeper\n- 🗓 Escala\n- 📈 Behavior\n- 🎯 Plano de ação\n- ✅ Práticas\n- 📊 NPS\n- 💡 Iniciativas\n- 📉 Tracker\n- 🛠 Work Plan\n- ⚠️ Plano de ação (Issues)\n- 🛡 SHE\n- 🏆 Behavior")
     with st.sidebar.expander("📝 Roteiro Quinta: Lead Time + SLA", expanded=True):
-        st.markdown("""
-        **Pauta Principal:** Lead Time e SLA + FTR + CATS/BH + Workplan
-        - 📑 Lista de presença
-        - ⏱ Pergunta Timekeeper, Challenger & Engage
-        - 🗓 Escala de horário
-        - 📈 Behavior (Notas reunião anterior)
-        - 🎯 Plano de ação (Ações do dia)
-        - 🕒 Lead Time
-        - ✅ FTR (Bianca ou Renan)
-        - 📁 Cats+BH (Amanda)
-        - 🛠 Work Plan
-        - ⚠️ Issues
-        - 📍 Plano de ação (Priorizar: A, M, B)
-        - 🛡 SHE
-        - 🏆 Behavior (Reconhecimento e notas)
-        """)
+        st.markdown("**Pauta:** Lead Time e SLA + FTR + CATS/BH + Workplan\n- 📑 Lista de presença\n- ⏱ Pergunta Timekeeper\n- 🗓 Escala\n- 📈 Behavior\n- 🎯 Plano de ação\n- 🕒 Lead Time\n- ✅ FTR\n- 📁 Cats+BH\n- 🛠 Work Plan\n- ⚠️ Issues\n- 📍 Plano de ação\n- 🛡 SHE\n- 🏆 Behavior")
 
     df_total = gerar_escala_balanceada(nomes)
     st.title(f"🚀 MMD | Portal de Escalas 2026")
@@ -272,10 +236,28 @@ if check_login():
             st.download_button("Baixar Ano Completo", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
 
     st.divider()
+    
+    # --- BUSCA COM CONTADORES E TABELA CORRIGIDA ---
     busca = st.selectbox("🔍 Buscar por Apresentador:", ["Todos"] + nomes)
     if busca != "Todos":
         df_b = df_total[df_total["Apresentador"] == busca].copy()
-        st.dataframe(df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], use_container_width=True, hide_index=True)
+        total_ap = len(df_b)
+        total_dor = len(df_b[df_b["Reunião"] == "DOR"])
+        
+        st.info(f"📊 {busca}: {total_ap} reuniões no ano (sendo {total_dor} reuniões DOR).")
+        
+        st.dataframe(
+            df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], 
+            column_config={
+                "Data": st.column_config.Column(width="small"),
+                "Dia": st.column_config.Column(width="small"),
+                "Reunião": st.column_config.Column(width="medium"),
+                "Backup": st.column_config.Column(width="medium"),
+                "Backup2": st.column_config.Column(width="medium"),
+                "Link": st.column_config.LinkColumn("Calendário", display_text="📅 Agendar", width="small")
+            }, 
+            use_container_width=True, hide_index=True
+        )
 
     st.divider()
     s_idx = st.select_slider("Semana:", options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
