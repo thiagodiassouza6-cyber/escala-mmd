@@ -9,7 +9,7 @@ import random
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Portal de Escalas", layout="wide")
 
-# --- DICIONÁRIO DE TRADUÇÃO (ATUALIZADO COM PAUTAS DETALHADAS) ---
+# --- DICIONÁRIO DE TRADUÇÃO ---
 I18N = {
     "PT": {
         "lang_code": "pt-BR",
@@ -21,6 +21,7 @@ I18N = {
         "acessibilidade": "Ativar Acessibilidade",
         "roteiro_ter": "📝 Roteiro Terça: Práticas + Iniciativas",
         "roteiro_qui": "📝 Roteiro Quinta: Lead Time + SLA",
+        "estrutura_tit": "👥 Estrutura de Times",
         "exp_mes": "📂 Exportar Mês",
         "exp_ano": "📅 Exportar Ano",
         "baixar": "Baixar",
@@ -41,21 +42,10 @@ I18N = {
         "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
         "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
         "pauta": {
-            "lista": "📑 Lista de presença",
-            "tk": "⏱ Timekeeper",
-            "escala": "🗓 Escala",
-            "behavior": "📈 Behavior",
-            "plan": "🎯 Plano de ação",
-            "prac": "✅ Práticas",
-            "nps": "📊 NPS",
-            "ini": "💡 Iniciativas",
-            "track": "📉 Tracker",
-            "work": "🛠 Work Plan",
-            "issue": "⚠️ Issues",
-            "she": "🛡 SHE",
-            "lt": "🕒 Lead Time",
-            "ftr": "✅ FTR",
-            "cats": "📁 Cats+BH"
+            "lista": "📑 Lista de presença", "tk": "⏱ Timekeeper", "escala": "🗓 Escala", "behavior": "📈 Behavior",
+            "plan": "🎯 Plano de ação", "prac": "✅ Práticas", "nps": "📊 NPS", "ini": "💡 Iniciativas",
+            "track": "📉 Tracker", "work": "🛠 Work Plan", "issue": "⚠️ Issues", "she": "🛡 SHE",
+            "lt": "🕒 Lead Time", "ftr": "✅ FTR", "cats": "📁 Cats+BH"
         }
     },
     "ES": {
@@ -68,6 +58,7 @@ I18N = {
         "acessibilidade": "Activar Accesibilidad",
         "roteiro_ter": "📝 Guion Martes: Prácticas + Iniciativas",
         "roteiro_qui": "📝 Guion Jueves: Lead Time + SLA",
+        "estrutura_tit": "👥 Estructura de Equipos",
         "exp_mes": "📂 Exportar Mes",
         "exp_ano": "📅 Exportar Año",
         "baixar": "Descargar",
@@ -88,21 +79,10 @@ I18N = {
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
         "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "pauta": {
-            "lista": "📑 Lista de presencia",
-            "tk": "⏱ Timekeeper",
-            "escala": "🗓 Escala Horario",
-            "behavior": "📈 Behavior",
-            "plan": "🎯 Plan de accion",
-            "prac": "✅ Practicas",
-            "nps": "📊 NPS",
-            "ini": "💡 Iniciativas",
-            "track": "📉 Tracker",
-            "work": "🛠 Work Plan",
-            "issue": "⚠️ Issues",
-            "she": "🛡 SHE",
-            "lt": "🕒 Lead Time",
-            "ftr": "✅ FTR",
-            "cats": "📁 Cats+BH"
+            "lista": "📑 Lista de presencia", "tk": "⏱ Timekeeper", "escala": "🗓 Escala Horario", "behavior": "📈 Behavior",
+            "plan": "🎯 Plan de accion", "prac": "✅ Practicas", "nps": "📊 NPS", "ini": "💡 Iniciativas",
+            "track": "📉 Tracker", "work": "🛠 Work Plan", "issue": "⚠️ Issues", "she": "🛡 SHE",
+            "lt": "🕒 Lead Time", "ftr": "✅ FTR", "cats": "📁 Cats+BH"
         }
     }
 }
@@ -140,25 +120,23 @@ def injetar_leitor_acessibilidade(lang_code):
         </script>
     """, height=0, width=0)
 
-# --- MOTOR DE REGRAS E FUNÇÕES AUXILIARES (LÓGICA PRESERVADA) ---
+# --- CONFIGURAÇÕES E MOTOR ---
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
 PASS_ACCESS = "@MMD123#"
 
 MAPA_REFERENCIA = {
-    "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", 
-    "Ariel": "Rafael", "Bianca M.": "Ariel", "Bruna": "Anna Laura", 
-    "Bruno": "Bianca M.", "Dani": "Jesus", "Debora": "Bruna", 
-    "Diana": "Julia", "Florencia": "Diana", "Gisele": "Thiago", 
-    "Honorato": "Bruno", "Jazmin": "Abigail", "Jesus": "Luca", 
-    "Julia": "Honorato", "Livia": "Amanda", "Luca": "Jazmin", 
-    "Mijal": "Livia", "Rafael": "Florencia", "Renan": "Debora", 
-    "Soledad": "Gisele", "Thiago": "Renan"
+    "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", "Ariel": "Rafael", 
+    "Bianca M.": "Ariel", "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Dani": "Jesus", 
+    "Debora": "Bruna", "Diana": "Julia", "Florencia": "Diana", "Gisele": "Thiago", 
+    "Honorato": "Bruno", "Jazmin": "Abigail", "Jesus": "Luca", "Julia": "Honorato", 
+    "Livia": "Amanda", "Luca": "Jazmin", "Mijal": "Livia", "Rafael": "Florencia", 
+    "Renan": "Debora", "Soledad": "Gisele", "Thiago": "Renan"
 }
 
-def encontrar_backup_vivo(nome_apresentador, nomes_ativos):
-    proximo = MAPA_REFERENCIA.get(nome_apresentador)
+def encontrar_backup_vivo(nome, nomes_ativos):
+    proximo = MAPA_REFERENCIA.get(nome)
     tentativas = 0
     while proximo and proximo not in nomes_ativos and tentativas < len(MAPA_REFERENCIA):
         proximo = MAPA_REFERENCIA.get(proximo)
@@ -190,34 +168,32 @@ def gerar_escala_balanceada(nomes):
     random.shuffle(nomes_dor)
     cont_total = {n: 0 for n in nomes}
     cont_dor = {n: 0 for n in nomes_dor}
-    ano = datetime.now().year
-    dias_range = pd.date_range(datetime(ano, 1, 1), datetime(ano, 12, 31), freq='B')
+    dias_range = pd.date_range(datetime(2026, 1, 1), datetime(2026, 12, 31), freq='B')
     escala = []
     
     for dia in dias_range:
-        data_s = dia.strftime("%d/%m/%Y")
-        sem = dia.isocalendar()[1]
-        d_sem = dia.weekday()
+        data_s, sem, d_sem = dia.strftime("%d/%m/%Y"), dia.isocalendar()[1], dia.weekday()
         d_nome = t["dias"][d_sem]
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         
+        # Manhã
         ap_m = min([n for n in fila_base if n not in quem_ja_foi], key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
         quem_ja_foi.append(ap_m)
-        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": t["flash_m"],
-            "Apresentador": ap_m, "Backup": encontrar_backup_vivo(ap_m, nomes), 
+            "Apresentador": ap_m, "Backup": encontrar_backup_vivo(ap_m, nomes),
             "Backup2": encontrar_backup_vivo(encontrar_backup_vivo(ap_m, nomes), nomes),
             "BackupOculto": encontrar_backup_vivo(encontrar_backup_vivo(encontrar_backup_vivo(ap_m, nomes), nomes), nomes),
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={urllib.parse.quote(t['flash_m'])}&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
 
+        # Tarde/DOR
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
-        ap_t = min([n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi], key=lambda x: cont_dor[x] if tipo_t == "DOR" else cont_total[x])
+        cand_t = [n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi]
+        ap_t = min(cand_t, key=lambda x: cont_dor[x] if tipo_t == "DOR" else cont_total[x])
         if tipo_t == "DOR": cont_dor[ap_t] += 1
         cont_total[ap_t] += 1
-        
         escala.append({
             "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": tipo_t,
             "Apresentador": ap_t, "Backup": encontrar_backup_vivo(ap_t, nomes),
@@ -233,31 +209,27 @@ def exportar_excel_limpo(df_total, mes_nome=None):
     df_c['dt_obj'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
     meses_map = {i+1: nome for i, nome in enumerate(t["meses"])}
     df_c['Mês'] = df_c['dt_obj'].dt.month.map(meses_map)
-    
     m = df_c[df_c['Reunião'] == t['flash_m']][['Mês', 'Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':t['resp_m'], 'Backup':t['backup'] + ' M'})
     t_df = df_c[df_c['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].rename(columns={'Apresentador':t['resp_t'], 'Backup':t['backup'] + ' T', 'Reunião':t['tipo_t']})
-    
-    df_f = pd.merge(m, t_df, on='Data', how='outer').fillna("")
-    df_f['dt_sort'] = pd.to_datetime(df_f['Data'], format='%d/%m/%Y')
-    df_f = df_f.sort_values('dt_sort')
+    df_f = pd.merge(m, t_df, on='Data', how='outer').fillna("").sort_values('Data')
     if mes_nome: df_f = df_f[df_f['Mês'] == mes_nome]
 
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook, worksheet = writer.book, writer.book.add_worksheet('Escala')
         h_fmt = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1, 'align': 'center'})
-        m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center'})
         c_fmt = workbook.add_format({'border': 1, 'align': 'center'})
-        col_list = ['Data', 'Dia', t['resp_m'], t['backup'] + ' M', t['tipo_t'], t['resp_t'], t['backup'] + ' T']
-        for idx, col_n in enumerate(col_list): 
-            worksheet.write(0, idx, col_n, h_fmt)
-            worksheet.set_column(idx, idx, 20)
-        row_idx, mes_atual = 1, ""
+        cols = ['Data', 'Dia', t['resp_m'], t['backup'] + ' M', t['tipo_t'], t['resp_t'], t['backup'] + ' T']
+        for i, col in enumerate(cols): 
+            worksheet.write(0, i, col, h_fmt)
+            worksheet.set_column(i, i, 18)
+        row_idx, mes_at = 1, ""
         for _, row in df_f.iterrows():
-            if row['Mês'] != mes_atual:
-                mes_atual = row['Mês']
-                worksheet.merge_range(row_idx, 0, row_idx, 6, mes_atual.upper(), m_fmt)
+            if row['Mês'] != mes_at:
+                mes_at = row['Mês']
+                worksheet.merge_range(row_idx, 0, row_idx, 6, mes_at.upper(), m_fmt)
                 row_idx += 1
-            for col_idx, col_name in enumerate(col_list): worksheet.write(row_idx, col_idx, row[col_name] if col_name in row else "", c_fmt)
+            for j, c in enumerate(cols): worksheet.write(row_idx, j, row[c] if c in row else "", c_fmt)
             row_idx += 1
     return output.getvalue()
 
@@ -275,7 +247,7 @@ def renderizar_card(row):
 # --- EXECUÇÃO ---
 if check_login():
     st.sidebar.title("🌐 Idioma / Lenguaje")
-    lang_opt = st.sidebar.radio("Seleccione / Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
+    lang_opt = st.sidebar.radio("Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
     new_lang = "PT" if "Português" in lang_opt else "ES"
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
@@ -286,15 +258,27 @@ if check_login():
         injetar_leitor_acessibilidade(t["lang_code"])
     
     st.sidebar.divider()
-    # ROTEIRO TERÇA
-    with st.sidebar.expander(t["roteiro_ter"], expanded=True):
+    
+    # Roteiro Terça (Fechado por padrão)
+    with st.sidebar.expander(t["roteiro_ter"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['prac']} + {t['pauta']['ini']} + {t['pauta']['track']} + {t['pauta']['work']}")
         st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['prac']}\n- {t['pauta']['nps']}\n- {t['pauta']['ini']}\n- {t['pauta']['track']}\n- {t['pauta']['work']}\n- {t['pauta']['plan']} ({t['pauta']['issue']})\n- 🛡 SHE\n- 🏆 Behavior")
 
-    # ROTEIRO QUINTA
-    with st.sidebar.expander(t["roteiro_qui"], expanded=True):
+    # Roteiro Quinta (Fechado por padrão)
+    with st.sidebar.expander(t["roteiro_qui"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['lt']} + {t['pauta']['ftr']} + {t['pauta']['cats']} + {t['pauta']['work']}")
         st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['lt']}\n- {t['pauta']['ftr']}\n- {t['pauta']['cats']}\n- {t['pauta']['work']}\n- {t['pauta']['issue']}\n- {t['pauta']['plan']}\n- 🛡 SHE\n- 🏆 Behavior")
+
+    # Estrutura de Times (Fechado por padrão)
+    with st.sidebar.expander(t["estrutura_tit"], expanded=False):
+        st.markdown("""
+        **Indireto Brasil:** Debora, Dani, Abigail, Luca, Bruno, Thiago, Anna
+        \n**Material Fert Brasil:** Amanda, Sabrina, Douglas
+        \n**CRM:** Julia, Bruna, Renan
+        \n**Material Direto Brasil:** Livia, Rafael
+        \n**Material Direto Latam:** Ariel, Cristian, Enrique, Sonia, Gisele
+        \n**Fert Latam:** Jazmin, Florencia, Jesus, Bianca, Soledad, Mijal, Silvana, Andrea, Honorato, Faiha
+        """)
 
     try:
         df_csv = pd.read_csv(SHEET_URL)
