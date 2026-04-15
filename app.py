@@ -280,15 +280,15 @@ if check_login():
     with st.sidebar.expander(t["roteiro_ter"]):
         st.markdown("""
         **Terça-feira: Práticas + Iniciativas + Tracker + Work Plan**
-        1.  Lista de presença
-        2.  Pergunta Timekeeper – E TODOS SE SINTAM A VONTADE PARA SER CHALLENGE E ENGAGE
-        3.  Escala de horário
-        4.  Behavior (checa as notas da reunião anterior)
-        5.  Plano de ação (verificar as ações do dia)
-        6.  Práticas (perguntar para cada responsável)
-        7.  NPS
-        8.  Iniciativas (cada um comenta sua iniciativa)
-        9.  Tracker
+        1. Lista de presença
+        2. Pergunta Timekeeper – E TODOS SE SINTAM A VONTADE PARA SER CHALLENGE E ENGAGE
+        3. Escala de horário
+        4. Behavior (checa as notas da reunião anterior)
+        5. Plano de ação (verificar as ações do dia)
+        6. Práticas (perguntar para cada responsável)
+        7. NPS
+        8. Iniciativas (cada um comenta sua iniciativa)
+        9. Tracker
         10. Work Plan
         11. Plano de ação (perguntar issues e priorizar)
         12. SHE
@@ -298,15 +298,15 @@ if check_login():
     with st.sidebar.expander(t["roteiro_qui"]):
         st.markdown("""
         **Quinta-feira: Lead Time e SLA + FTR + CATS/BH + Workplan**
-        1.  Lista de presença
-        2.  Pergunta Timekeeper, Challenger e Engage
-        3.  Escala de horário
-        4.  Behavior (checa as notas da reunião anterior)
-        5.  Plano de ação (verificar as ações do dia)
-        6.  Lead Time (Cristian ou Barreto, Bianca ou Renan)
-        7.  FTR (Bianca ou Renan)
-        8.  Cats+BH (Amanda)
-        9.  Work Plan
+        1. Lista de presença
+        2. Pergunta Timekeeper, Challenger e Engage
+        3. Escala de horário
+        4. Behavior (checa as notas da reunião anterior)
+        5. Plano de ação (verificar as ações do dia)
+        6. Lead Time (Cristian ou Barreto, Bianca ou Renan)
+        7. FTR (Bianca ou Renan)
+        8. Cats+BH (Amanda)
+        9. Work Plan
         10. Issues
         11. Plano de ação (priorizar Alta, Média e Baixa)
         12. SHE
@@ -351,19 +351,27 @@ if check_login():
         if sh:
             ws = sh.worksheet("DB_FERIAS")
             raw_data = ws.get_all_records()
-            df_base = pd.DataFrame(raw_data) if raw_data else pd.DataFrame(columns=["Nome", "Data Início", "Data Final", "Equipe", "Obs", "Timestamp", "Usuario", "ID"])
+            
+            # Garante que o DataFrame tenha as colunas necessárias
+            colunas_necessarias = ["Nome", "Data Início", "Data Final", "Equipe", "Obs", "Timestamp", "Usuario", "ID"]
+            if raw_data:
+                df_base = pd.DataFrame(raw_data)
+                for col in colunas_necessarias:
+                    if col not in df_base.columns:
+                        df_base[col] = ""
+            else:
+                df_base = pd.DataFrame(columns=colunas_necessarias)
 
             # --- LIMPEZA AUTOMÁTICA (FILTRO PARA O PORTAL) ---
             hoje_dt = datetime.now().date()
             if not df_base.empty:
-                df_base['Data Final Obj'] = pd.to_datetime(df_base['Data Final'], dayfirst=True).dt.date
+                df_base['Data Final Obj'] = pd.to_datetime(df_base['Data Final'], dayfirst=True, errors='coerce').dt.date
                 df_ativas = df_base[df_base['Data Final Obj'] >= hoje_dt].copy()
             else:
                 df_ativas = df_base.copy()
 
             col_form, col_grade = st.columns([1, 2])
             with col_form:
-                # REGISTRO
                 st.subheader(t["reg_periodo"])
                 with st.form("form_ferias", clear_on_submit=True):
                     nome_sel = st.selectbox(t["colaborador"], sorted(list(PESSOA_PARA_TORRE.keys())))
@@ -379,31 +387,29 @@ if check_login():
                             if not df_ativas.empty:
                                 df_check = df_ativas[df_ativas['Equipe'] == torre_sel]
                                 for _, row in df_check.iterrows():
-                                    if (d_ini <= row['Data Final Obj']) and (d_fim >= pd.to_datetime(row['Data Início'], dayfirst=True).date()):
-                                        conflito = True
-                                        st.error(t["err_conflito"].format(nome=row['Nome'], equipe=torre_sel))
-                                        break
+                                    if pd.notnull(row['Data Final Obj']):
+                                        if (d_ini <= row['Data Final Obj']) and (d_fim >= pd.to_datetime(row['Data Início'], dayfirst=True).date()):
+                                            conflito = True
+                                            st.error(t["err_conflito"].format(nome=row['Nome'], equipe=torre_sel))
+                                            break
                             
                             if not conflito:
-                                # Gera um ID único baseado no tempo para edição futura
                                 novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
                                 ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login, novo_id])
                                 st.success(t["sucesso"])
                                 st.rerun()
                 
-                # GERENCIAMENTO (EDIÇÃO/EXCLUSÃO)
                 st.divider()
                 st.subheader(t["gerenciar_f"])
                 filtro_u = st.text_input("Digite seu usuário para ver suas férias:", key="filtro_u").strip()
-                if filtro_u:
-                    minhas_f = df_ativas[df_ativas['Usuario'].str.lower() == filtro_u.lower()]
+                if filtro_u and not df_ativas.empty:
+                    minhas_f = df_ativas[df_ativas['Usuario'].astype(str).str.lower() == filtro_u.lower()]
                     if not minhas_f.empty:
                         for idx, row in minhas_f.iterrows():
                             with st.expander(f"📌 {row['Data Início']} até {row['Data Final']}"):
                                 st.write(f"**Obs:** {row['Obs']}")
                                 if st.button(f"Excluir Registro", key=f"del_{row['ID']}"):
-                                    # Localiza a linha correta pelo ID na planilha original (procurando na coluna H/ID)
-                                    ids_planilha = ws.col_values(8) # Coluna H
+                                    ids_planilha = ws.col_values(8) # Coluna H (ID)
                                     try:
                                         linha_planilha = ids_planilha.index(str(row['ID'])) + 1
                                         ws.delete_rows(linha_planilha)
@@ -411,8 +417,7 @@ if check_login():
                                         st.rerun()
                                     except ValueError:
                                         st.error("Erro ao localizar registro.")
-                    else:
-                        st.info("Nenhum registro ativo encontrado para este usuário.")
+                    else: st.info("Nenhum registro ativo encontrado.")
 
             with col_grade:
                 st.subheader(t["grade_tit"])
@@ -433,12 +438,15 @@ if check_login():
                             data_c = datetime(ano_sel, m_idx, day).date()
                             status, cor = t["livre"], "#28a745"
                             if not df_ativas.empty:
-                                conf_v = df_ativas[(df_ativas['Equipe'] == eq_sel) & (data_c >= pd.to_datetime(df_ativas['Data Início'], dayfirst=True).dt.date) & (data_c <= df_ativas['Data Final Obj'])]
+                                df_f_plan = df_ativas.copy()
+                                df_f_plan['DT_INI_OBJ'] = pd.to_datetime(df_f_plan['Data Início'], dayfirst=True, errors='coerce').dt.date
+                                conf_v = df_f_plan[(df_f_plan['Equipe'] == eq_sel) & (data_c >= df_f_plan['DT_INI_OBJ']) & (data_c <= df_f_plan['Data Final Obj'])]
                                 if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
                             cols_g[i].markdown(f'<div style="background-color:{cor};color:white;padding:5px;border-radius:5px;text-align:center;margin-bottom:8px;font-size:11px;height:55px;"><small>{day}</small><br><b>{status}</b></div>', unsafe_allow_html=True)
 
             st.divider()
             st.subheader(t["log_tit"])
             if not df_ativas.empty:
-                df_log = df_ativas[["Nome", "Data Início", "Data Final", "Equipe", "Obs"]].sort_values("Data Início")
+                colunas_log = [c for c in ["Nome", "Data Início", "Data Final", "Equipe", "Obs"] if c in df_ativas.columns]
+                df_log = df_ativas[colunas_log].sort_values("Data Início")
                 st.dataframe(df_log, use_container_width=True, hide_index=True)
