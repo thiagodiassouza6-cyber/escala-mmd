@@ -108,6 +108,7 @@ else:
                             st.error("Data de início não pode ser maior que o término.")
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
+                            # Ordem das colunas: Nome, Data Início, Data Final, Equipe, Observação, Data Registro, Usuário Logado
                             nova_linha = [
                                 nome_sel, 
                                 d_ini.strftime("%d/%m/%Y"), 
@@ -125,21 +126,19 @@ else:
                 st.subheader("📅 Grade de Disponibilidade")
                 mes_n = st.selectbox("Selecione o Mês", range(1, 13), format_func=lambda x: t["meses"][x-1])
                 
-                # Lógica para marcar como OCUPADO na grade
                 if not df_ferias.empty:
                     # Filtra apenas quem é da mesma torre para a grade visual
                     user_torre = PESSOA_PARA_TORRE.get(nome_sel)
-                    df_view = df_ferias[df_ferias['Torre'] == user_torre].copy()
+                    df_view = df_ferias[df_ferias['Equipe'] == user_torre].copy()
                     
                     # Converte datas para comparação
                     df_view['Data Início'] = pd.to_datetime(df_view['Data Início'], dayfirst=True)
                     df_view['Data Final'] = pd.to_datetime(df_view['Data Final'], dayfirst=True)
 
-                    # Exemplo visual simples de log
                     st.write(f"Exibindo férias para a torre: **{user_torre}**")
                     st.dataframe(df_view[['Nome', 'Data Início', 'Data Final', 'Observação']], use_container_width=True)
                 
-                st.info("Dica: Os dias ocupados são validados automaticamente no banco de dados.")
+                st.info("Dica: Os dias ocupados na planilha bloqueiam automaticamente a disponibilidade na torre.")
 
             st.divider()
             st.subheader("📋 Log Geral de Registros")
