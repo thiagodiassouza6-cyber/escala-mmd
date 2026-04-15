@@ -5,9 +5,21 @@ import urllib.parse
 import streamlit.components.v1 as components
 import io
 import random
+import gspread  # Biblioteca para conexão com Google Sheets
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Portal Integrado", layout="wide")
+
+# --- FUNÇÃO DE CONEXÃO COM GOOGLE SHEETS (USANDO SECRETS) ---
+def conectar_google_sheets():
+    try:
+        creds = st.secrets["gcp_service_account"]
+        client = gspread.service_account_from_dict(dict(creds))
+        sh = client.open("Escala MMD")
+        return sh
+    except Exception as e:
+        st.error(f"Erro de conexão com a base de dados: {e}")
+        return None
 
 # --- DICIONÁRIO DE TORRES (REGRA DE NEGÓCIO) ---
 TORRES = {
@@ -19,7 +31,6 @@ TORRES = {
     "Fert Latam": ["Jazmin", "Florencia", "Jesus", "Bianca", "Soledad", "Mijal", "Silvana", "Andrea", "Honorato", "Faiha"]
 }
 
-# Inverter para busca rápida: { "Thiago": "Indireto Brasil" }
 PESSOA_PARA_TORRE = {pessoa: torre for torre, pessoas in TORRES.items() for pessoa in pessoas}
 
 # --- DICIONÁRIO DE TRADUÇÃO ---
@@ -70,7 +81,7 @@ I18N = {
         "flash_m": "Flash Mañana", "resp_m": "Responsable Mañana", "resp_t": "Responsable Tarde", "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mes",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julho", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "meses": ["Enero", "Febrero", "Março", "Abril", "Maio", "Junio", "Julho", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "pauta": {
             "lista": "📑 Lista de presencia", "tk": "⏱ Timekeeper", "escala": "🗓 Escala Horario", "behavior": "📈 Behavior",
             "plan": "🎯 Plan de accion", "prac": "✅ Practicas", "nps": "📊 NPS", "ini": "💡 Iniciativas",
@@ -81,11 +92,9 @@ I18N = {
 }
 
 if "lang" not in st.session_state: st.session_state.lang = "PT"
-if "db_ferias" not in st.session_state: st.session_state.db_ferias = [] # Simulação do banco de dados
-
 t = I18N[st.session_state.lang]
 
-# --- FUNÇÕES DE ACESSIBILIDADE E LOGIN (MANTIDAS) ---
+# --- FUNÇÕES DE ACESSIBILIDADE E LOGIN ---
 def injetar_leitor_acessibilidade(lang_code):
     components.html(f"""<script>
         const synth = window.speechSynthesis; let ultimoTexto = "";
@@ -148,7 +157,7 @@ def gerar_escala_balanceada(nomes):
         esc.append({"Semana": sem, "Data": dt, "Dia": t["dias"][d_sem], "Reunião": tipo_t, "Apresentador": ap_t, "Backup": encontrar_backup_vivo(ap_t, nomes), "Backup2": encontrar_backup_vivo(encontrar_backup_vivo(ap_t, nomes), nomes), "BackupOculto": "", "Link": "#"})
     return pd.DataFrame(esc)
 
-# --- FUNÇÃO DE EXPORTAÇÃO CORRIGIDA ---
+# --- FUNÇÃO DE EXPORTAÇÃO ---
 def exportar_excel_limpo(df_total, mes_nome=None):
     output = io.BytesIO()
     df_c = df_total.copy()
@@ -234,74 +243,102 @@ if check_login():
                     <b>{r['Reunião']}</b><br><br><span style="font-size:18px;font-weight:bold;">🏆 {r['Apresentador']}</span><br>
                     <small>{t['backup']}: {r['Backup']}</small></div>""", unsafe_allow_html=True)
 
-    # --- ABA 2: FÉRIAS (O NOVO MÓDULO) ---
+    # --- ABA 2: FÉRIAS (CONECTADO AO GOOGLE SHEETS) ---
     with tab_ferias:
-        st.title("🌴 Planejamento de Férias Inteligente")
+        st.title("🌴 Planejamento de Férias Integrado")
         st.info("Regra: Pessoas da mesma torre não podem sair de férias no mesmo período.")
         
-        col_form, col_visu = st.columns([1, 3])
-        
-        with col_form:
-            st.subheader("Marcar Período")
-            nome_f = st.selectbox("Seu Nome:", nomes)
-            data_ini = st.date_input("Início:", value=datetime.now())
-            data_fim = st.date_input("Término:", value=datetime.now() + timedelta(days=10))
+        # Conexão com a aba DB_FERIAS
+        sh = conectar_google_sheets()
+        if sh:
+            ws_ferias = sh.worksheet("DB_FERIAS")
+            # Carregar dados existentes
+            dados_sheets = ws_ferias.get_all_records()
+            db_ferias_atual = pd.DataFrame(dados_sheets)
             
-            if st.button("💾 Salvar Férias", use_container_width=True):
-                minha_torre = PESSOA_PARA_TORRE.get(nome_f)
-                conflito = False
-                quem_conflita = ""
-                
-                # Checar Regra de Torres
-                for registro in st.session_state.db_ferias:
-                    # Se é da mesma torre e não é a mesma pessoa
-                    if PESSOA_PARA_TORRE.get(registro['nome']) == minha_torre and registro['nome'] != nome_f:
-                        # Checar sobreposição de datas
-                        if not (data_fim < registro['ini'] or data_ini > registro['fim']):
-                            conflito = True
-                            quem_conflita = registro['nome']
-                            break
-                
-                if conflito:
-                    st.error(f"❌ Bloqueado! {quem_conflita} da torre '{minha_torre}' já possui férias nesse período.")
-                else:
-                    st.session_state.db_ferias.append({'nome': nome_f, 'ini': data_ini, 'fim': data_fim, 'torre': minha_torre})
-                    st.success("✅ Férias registradas com sucesso!")
-                    st.rerun()
+            col_form, col_visu = st.columns([1, 3])
+            
+            with col_form:
+                st.subheader("Marcar Período")
+                with st.form("form_ferias", clear_on_submit=True):
+                    nome_f = st.selectbox("Seu Nome:", nomes)
+                    data_ini = st.date_input("Início:", value=datetime.today())
+                    data_fim = st.date_input("Término:", value=datetime.today() + timedelta(days=10))
+                    obs_f = st.text_input("Observação:", "Férias 2026")
+                    salvar = st.form_submit_button("💾 Salvar no Sheets", use_container_width=True)
+                    
+                    if salvar:
+                        minha_torre = PESSOA_PARA_TORRE.get(nome_f)
+                        conflito = False
+                        quem_conflita = ""
+                        
+                        # Lógica de Conflito baseada no DataFrame carregado do Sheets
+                        if not db_ferias_atual.empty:
+                            for _, registro in db_ferias_atual.iterrows():
+                                # Converter datas do Sheets para objeto date do Python
+                                try:
+                                    r_ini = datetime.strptime(str(registro['Data Início']), "%d/%m/%Y").date()
+                                    r_fim = datetime.strptime(str(registro['Data Fim']), "%d/%m/%Y").date()
+                                except: continue
 
-        with col_visu:
-            mes_ref = st.selectbox("Visualizar Mês:", t["meses"], index=datetime.now().month -1)
-            ano_ref = 2026
-            num_mes = t["meses"].index(mes_ref) + 1
-            
-            # Criar grade visual simples
-            st.write(f"### Disponibilidade: {mes_ref} / {ano_ref}")
-            
-            # Lógica de cores para os dias do mês
-            dias_do_mes = pd.date_range(start=f"{ano_ref}-{num_mes:02d}-01", end=pd.Timestamp(ano_ref, num_mes, 1) + pd.offsets.MonthEnd(0))
-            
-            # Mostrar os dias em formato de grade (7 colunas)
-            cols_grid = st.columns(7)
-            for i, dia in enumerate(dias_do_mes):
-                dia_dt = dia.date()
-                ocupado = False
-                ocupante = ""
-                for r in st.session_state.db_ferias:
-                    if r['ini'] <= dia_dt <= r['fim']:
-                        ocupado = True
-                        ocupante = r['nome']
-                        break
+                                if registro['Equipe'] == minha_torre and registro['Nome'] != nome_f:
+                                    if not (data_fim < r_ini or data_ini > r_fim):
+                                        conflito = True
+                                        quem_conflita = registro['Nome']
+                                        break
+                        
+                        if conflito:
+                            st.error(f"❌ Bloqueado! {quem_conflita} da torre '{minha_torre}' já possui férias nesse período.")
+                        else:
+                            # Gravação Real no Google Sheets
+                            nova_linha = [
+                                nome_f, 
+                                data_ini.strftime("%d/%m/%Y"), 
+                                data_fim.strftime("%d/%m/%Y"), 
+                                minha_torre, 
+                                obs_f, 
+                                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                            ]
+                            ws_ferias.append_row(nova_linha)
+                            st.success("✅ Férias registradas diretamente na planilha!")
+                            st.balloons()
+                            st.rerun()
+
+            with col_visu:
+                mes_ref = st.selectbox("Visualizar Disponibilidade:", t["meses"], index=datetime.now().month - 1)
+                ano_ref = 2026
+                num_mes = t["meses"].index(mes_ref) + 1
                 
-                cor = "#ff4b4b" if ocupado else "#28a745"
-                txt_cor = "white"
-                with cols_grid[i % 7]:
-                    st.markdown(f"""<div style="background:{cor}; color:{txt_cor}; padding:5px; border-radius:5px; text-align:center; margin-bottom:5px; font-size:12px;">
-                    {dia.day}<br><b>{ocupante if ocupante else 'Livre'}</b></div>""", unsafe_allow_html=True)
-        
-        st.divider()
-        st.subheader("Lista de Férias Marcadas")
-        if st.session_state.db_ferias:
-            df_f_view = pd.DataFrame(st.session_state.db_ferias)
-            st.table(df_f_view)
-        else:
-            st.write("Nenhuma férias registrada ainda.")
+                st.write(f"### Grade Mensal: {mes_ref} / {ano_ref}")
+                
+                # Criar grade visual
+                dias_do_mes = pd.date_range(start=f"{ano_ref}-{num_mes:02d}-01", end=pd.Timestamp(ano_ref, num_mes, 1) + pd.offsets.MonthEnd(0))
+                cols_grid = st.columns(7)
+                
+                for i, dia in enumerate(dias_do_mes):
+                    dia_dt = dia.date()
+                    ocupado = False
+                    ocupante = ""
+                    
+                    if not db_ferias_atual.empty:
+                        for _, r in db_ferias_atual.iterrows():
+                            try:
+                                r_ini = datetime.strptime(str(r['Data Início']), "%d/%m/%Y").date()
+                                r_fim = datetime.strptime(str(r['Data Fim']), "%d/%m/%Y").date()
+                                if r_ini <= dia_dt <= r_fim:
+                                    ocupado = True
+                                    ocupante = r['Nome']
+                                    break
+                            except: continue
+                    
+                    cor = "#ff4b4b" if ocupado else "#28a745"
+                    with cols_grid[i % 7]:
+                        st.markdown(f"""<div style="background:{cor}; color:white; padding:5px; border-radius:5px; text-align:center; margin-bottom:5px; font-size:12px; min-height:50px;">
+                        {dia.day}<br><b>{ocupante if ocupante else 'Livre'}</b></div>""", unsafe_allow_html=True)
+            
+            st.divider()
+            st.subheader("📋 Log de Férias (Base Sheets)")
+            if not db_ferias_atual.empty:
+                st.dataframe(db_ferias_atual, use_container_width=True, hide_index=True)
+            else:
+                st.write("Nenhuma férias registrada no banco de dados.")
