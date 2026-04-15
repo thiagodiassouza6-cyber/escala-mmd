@@ -79,7 +79,7 @@ I18N = {
         "log_tit": "📋 Próximas Férias (Ordem Cronológica)",
         "err_user": "Por favor, informe o seu usuário.",
         "err_data": "A data de início não pode ser maior que a data de término.",
-        "err_conflito": "❌ Erro: {nome} da equipe {equipe} já possui férias neste período. Um colega deve retornar para que outro saia.",
+        "err_conflito": "❌ Erro: {nome} da equipe {equipe} já possui férias neste período.",
         "sucesso": "✅ Férias registradas!",
         "livre": "Livre",
         "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
@@ -129,7 +129,7 @@ I18N = {
         "log_tit": "📋 Próximas Vacaciones (Orden Cronológico)",
         "err_user": "Por favor, informe su usuario.",
         "err_data": "La fecha de inicio no puede ser mayor que la fecha de finalización.",
-        "err_conflito": "❌ Error: {nome} del equipo {equipe} ya tiene vacaciones en este periodo. Un colega debe regresar para que otro salga.",
+        "err_conflito": "❌ Error: {nome} del equipo {equipe} ya tiene vacaciones en este periodo.",
         "sucesso": "✅ ¡Vacaciones registradas!",
         "livre": "Libre",
         "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
@@ -303,8 +303,44 @@ if check_login():
     st.sidebar.divider()
     with st.sidebar.expander(t["estrutura_tit"]):
         for torre, membros in TORRES.items(): st.markdown(f"**{torre}:** {', '.join(membros)}")
-    with st.sidebar.expander(t["roteiro_ter"]): st.markdown("- Práticas\n- Iniciativas\n- Tracker\n- Work Plan")
-    with st.sidebar.expander(t["roteiro_qui"]): st.markdown("- Lead Time\n- FTR\n- Cats+BH\n- Work Plan")
+    
+    # --- ROTEIRO TERÇA (ATUALIZADO) ---
+    with st.sidebar.expander(t["roteiro_ter"]):
+        st.markdown("""
+        **Terça-feira: Práticas + Iniciativas + Tracker + Work Plan**
+        1.  Lista de presença
+        2.  Pergunta Timekeeper – E TODOS SE SINTAM A VONTADE PARA SER CHALLENGE E ENGAGE
+        3.  Escala de horário
+        4.  Behavior (checa as notas da reunião anterior)
+        5.  Plano de ação (verificar as ações do dia)
+        6.  Práticas (perguntar para cada responsável)
+        7.  NPS
+        8.  Iniciativas (cada um comenta sua iniciativa)
+        9.  Tracker
+        10. Work Plan
+        11. Plano de ação (perguntar issues e priorizar)
+        12. SHE
+        13. Behavior (Reconhecimento e notas)
+        """)
+
+    # --- ROTEIRO QUINTA (ATUALIZADO) ---
+    with st.sidebar.expander(t["roteiro_qui"]):
+        st.markdown("""
+        **Quinta-feira: Lead Time e SLA + FTR + CATS/BH + Workplan**
+        1.  Lista de presença
+        2.  Pergunta Timekeeper, Challenger e Engage
+        3.  Escala de horário
+        4.  Behavior (checa as notas da reunião anterior)
+        5.  Plano de ação (verificar as ações do dia)
+        6.  Lead Time (Cristian ou Barreto, Bianca ou Renan)
+        7.  FTR (Bianca ou Renan)
+        8.  Cats+BH (Amanda)
+        9.  Work Plan
+        10. Issues
+        11. Plano de ação (priorizar Alta, Média e Baixa)
+        12. SHE
+        13. Behavior (Reconhecimento e notas)
+        """)
 
     tab_escala, tab_ferias = st.tabs(["📅 Escalas", "🌴 " + ("Férias" if st.session_state.lang == "PT" else "Vacaciones")])
 
@@ -355,31 +391,20 @@ if check_login():
                     user_login = st.text_input(t["usuario_log"])
                     d_ini, d_fim = st.date_input(t["dt_inicio"]), st.date_input(t["dt_fim"])
                     obs_f = st.text_input(t["obs"], value=f"Férias {d_ini.year}")
-                    
                     if st.form_submit_button(t["btn_salvar"]):
                         if not user_login: st.error(t["err_user"])
                         elif d_ini > d_fim: st.error(t["err_data"])
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
                             conflito = False
-                            
-                            # --- REGRA DE OURO: VALIDAÇÃO POR EQUIPE ---
                             if not df_ferias.empty:
                                 df_check = df_ferias.copy()
                                 df_check['Data Início'] = pd.to_datetime(df_check['Data Início'], dayfirst=True).dt.date
                                 df_check['Data Final'] = pd.to_datetime(df_check['Data Final'], dayfirst=True).dt.date
-                                
-                                # Filtra férias da mesma equipe que sobrepõem o período solicitado
-                                conflitos = df_check[
-                                    (df_check['Equipe'] == torre_sel) & 
-                                    (d_ini <= df_check['Data Final']) & 
-                                    (d_fim >= df_check['Data Início'])
-                                ]
-                                
-                                if not conflitos.empty:
+                                overlaps = df_check[(df_check['Equipe'] == torre_sel) & (d_ini <= df_check['Data Final']) & (d_fim >= df_check['Data Início'])]
+                                if not overlaps.empty:
                                     conflito = True
-                                    pessoa_conflito = conflitos.iloc[0]['Nome']
-                                    st.error(t["err_conflito"].format(nome=pessoa_conflito, equipe=torre_sel))
+                                    st.error(t["err_conflito"].format(nome=overlaps.iloc[0]['Nome'], equipe=torre_sel))
                             
                             if not conflito:
                                 ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
