@@ -11,7 +11,7 @@ import calendar
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MMD | Portal de Escalas", layout="wide")
 
-# --- CONEXÃO COM GOOGLE SHEETS (PARA ABA FÉRIAS) ---
+# --- CONEXÃO COM GOOGLE SHEETS ---
 def conectar_google_sheets():
     try:
         creds = st.secrets["gcp_service_account"]
@@ -21,7 +21,7 @@ def conectar_google_sheets():
     except Exception as e:
         return None
 
-# --- ESTRUTURA DE TIMES ---
+# --- ESTRUTURA DE TIMES (DEFINIÇÃO) ---
 TORRES = {
     "Indireto Brasil": ["Debora", "Dani", "Abigail", "Luca", "Bruno", "Thiago", "Anna Laura"],
     "Material Fert Brasil": ["Amanda", "Sabrina", "Douglas"],
@@ -36,8 +36,8 @@ PESSOA_PARA_TORRE = {p: t for t, pessoas in TORRES.items() for p in pessoas}
 I18N = {
     "PT": {
         "lang_code": "pt-BR",
-        "titulo": "🚀 MMD | Portal de Escalas 2026",
-        "login_tit": "Portal de Escalas MMD",
+        "titulo": "🚀 MMD | Portal de Gestão 2026",
+        "login_tit": "Portal de Gestão MMD",
         "usuario": "Usuário",
         "senha": "Senha",
         "acessar": "Acessar Painel",
@@ -73,8 +73,8 @@ I18N = {
     },
     "ES": {
         "lang_code": "es-ES",
-        "titulo": "🚀 MMD | Portal de Escalas 2026",
-        "login_tit": "Portal de Escalas MMD",
+        "titulo": "🚀 MMD | Portal de Gestión 2026",
+        "login_tit": "Portal de Gestión MMD",
         "usuario": "Usuario",
         "senha": "Contraseña",
         "acessar": "Acceder al Panel",
@@ -143,7 +143,7 @@ def injetar_leitor_acessibilidade(lang_code):
         </script>
     """, height=0, width=0)
 
-# --- MOTOR DE REGRAS ---
+# --- MOTOR DE REGRAS E BACKUP ---
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
@@ -179,10 +179,11 @@ def check_login():
                     if u == USER_ACCESS and p == PASS_ACCESS:
                         st.session_state.logged_in = True
                         st.rerun()
-                    else: st.error("Acesso negado / Acceso denegado")
+                    else: st.error("Acesso negado")
         return False
     return True
 
+# --- GERAÇÃO DE ESCALA ---
 def gerar_escala_balanceada(nomes):
     random.seed(42)
     fila_base = nomes.copy()
@@ -266,14 +267,14 @@ def renderizar_card(row):
         <b style="font-size: 14px; color: #555;">{row['Reunião']}</b><br><br>
         <span style="font-size: 18px; font-weight: bold; color: #111;">🏆 {row['Apresentador']}</span><br><br>
         <span style="font-size: 13px; color: #444;">{t['backup']}: {row['Backup']}</span><br>
-        <span title="{t['backup_oculto']}: {row['BackupOculto']}" style="font-size: 13px; color: #444; cursor: help;">{t['backup2']}: {row['Backup2']}</span>
+        <span style="font-size: 13px; color: #444;">{t['backup2']}: {row['Backup2']}</span>
         <div style="margin-top: 15px;"><a href="{row['Link']}" target="_blank" style="display: block; text-decoration: none; color: white; background-color: #0078d4; padding: 8px; border-radius: 5px; font-size: 11px; text-align: center; font-weight: bold;">{t['agendar']}</a></div>
     </div>
     """, unsafe_allow_html=True)
 
-# --- EXECUÇÃO PRINCIPAL ---
+# --- INÍCIO DA APLICAÇÃO ---
 if check_login():
-    # Sidebar
+    # Sidebar: Idioma e Acessibilidade
     st.sidebar.title("🌐 Idioma / Lenguaje")
     lang_opt = st.sidebar.radio("Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
     new_lang = "PT" if "Português" in lang_opt else "ES"
@@ -286,15 +287,21 @@ if check_login():
         injetar_leitor_acessibilidade(t["lang_code"])
     
     st.sidebar.divider()
+
+    # --- NOVO: SEÇÃO ESTRUTURA DE TIMES (RESTAURADA) ---
+    with st.sidebar.expander(t["estrutura_tit"], expanded=False):
+        for torre, membros in TORRES.items():
+            st.markdown(f"**{torre}:** {', '.join(membros)}")
+
+    # Roteiros
     with st.sidebar.expander(t["roteiro_ter"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['prac']} + {t['pauta']['ini']} + {t['pauta']['track']} + {t['pauta']['work']}")
-        st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['prac']}\n- {t['pauta']['nps']}\n- {t['pauta']['ini']}\n- {t['pauta']['track']}\n- {t['pauta']['work']}\n- {t['pauta']['plan']} ({t['pauta']['issue']})\n- 🛡 SHE\n- 🏆 Behavior")
+        st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}")
 
     with st.sidebar.expander(t["roteiro_qui"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['lt']} + {t['pauta']['ftr']} + {t['pauta']['cats']} + {t['pauta']['work']}")
-        st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['lt']}\n- {t['pauta']['ftr']}\n- {t['pauta']['cats']}\n- {t['pauta']['work']}\n- {t['pauta']['issue']}\n- {t['pauta']['plan']}\n- 🛡 SHE\n- 🏆 Behavior")
 
-    # --- CRIAÇÃO DAS ABAS ---
+    # --- ABAS ---
     tab_escala, tab_ferias = st.tabs(["📅 Escalas", "🌴 Planejamento de Férias"])
 
     # --- ABA 1: ESCALAS ---
@@ -314,14 +321,14 @@ if check_login():
                 st.download_button(f"{t['baixar']} {m_sel}", exportar_excel_limpo(df_total, m_sel), f"Escala_{m_sel}.xlsx", use_container_width=True)
         with col_e2:
             with st.expander(t["exp_ano"]):
-                st.download_button(t["baixar"] + f" {t['mes_col']} Completo", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
+                st.download_button(t["baixar"] + " Anual", exportar_excel_limpo(df_total), "Escala_Anual.xlsx", use_container_width=True)
 
         st.divider()
         busca = st.selectbox(t["buscar"], [t["todos"]] + nomes)
         if busca != t["todos"]:
             df_b = df_total[df_total["Apresentador"] == busca].copy()
             st.info(t["stats"].format(nome=busca, total=len(df_b), dor=len(df_b[df_b["Reunião"] == "DOR"])))
-            st.dataframe(df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], column_config={"Link": st.column_config.LinkColumn(t["agendar"], display_text=t["agendar"], width="small")}, use_container_width=True, hide_index=True)
+            st.dataframe(df_b[["Data", "Dia", "Reunião", "Backup", "Backup2", "Link"]], use_container_width=True, hide_index=True)
 
         st.divider()
         s_idx = st.select_slider(t["semana"], options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
@@ -343,77 +350,57 @@ if check_login():
             col_form, col_grade = st.columns([1, 2])
             with col_form:
                 st.subheader("Registrar Período")
-                
                 lista_colaboradores = sorted(list(PESSOA_PARA_TORRE.keys()))
-                if "form_nome" not in st.session_state: st.session_state.form_nome = lista_colaboradores[0]
-                if "form_user" not in st.session_state: st.session_state.form_user = ""
-                if "form_obs" not in st.session_state: st.session_state.form_obs = "Férias 2026"
-
+                
                 with st.form("form_ferias"):
-                    nome_sel = st.selectbox("Colaborador:", lista_colaboradores, index=lista_colaboradores.index(st.session_state.form_nome))
-                    user_login = st.text_input("Seu Usuário (Obrigatório):", value=st.session_state.form_user)
+                    nome_sel = st.selectbox("Colaborador:", lista_colaboradores)
+                    user_login = st.text_input("Seu Usuário (Obrigatório):")
                     d_ini = st.date_input("Data de Início:")
                     d_fim = st.date_input("Data de Término:")
-                    obs_f = st.text_input("Observação:", value=st.session_state.form_obs)
+                    obs_f = st.text_input("Observação:", value="Férias 2026")
                     
-                    btn_salvar = st.form_submit_button("💾 Salvar no Sheets")
-
-                    if btn_salvar:
-                        st.session_state.form_nome = nome_sel
-                        st.session_state.form_user = user_login
-                        st.session_state.form_obs = obs_f
-
+                    if st.form_submit_button("💾 Salvar no Sheets"):
                         if not user_login:
                             st.error("Por favor, informe o seu usuário.")
                         elif d_ini > d_fim:
                             st.error("A data de início não pode ser maior que a data de término.")
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            conflito_detectado = False
-                            
+                            conflito = False
                             if not df_ferias.empty:
                                 df_v = df_ferias.copy()
                                 df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
                                 df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
-                                
-                                conflitos = df_v[(df_v['Equipe'] == torre_sel) & (d_ini <= df_v['Data Final']) & (d_fim >= df_v['Data Início'])]
-                                if not conflitos.empty:
-                                    conflito_detectado = True
-                                    pessoa_conflito = conflitos.iloc[0]['Nome']
-                                    st.error(f"❌ Conflito Detectado: {pessoa_conflito} já tem férias nesta equipe ({torre_sel}) para este período.")
-
-                            if not conflito_detectado:
+                                conf_detectado = df_v[(df_v['Equipe'] == torre_sel) & (d_ini <= df_v['Data Final']) & (d_fim >= df_v['Data Início'])]
+                                if not conf_detectado.empty:
+                                    conflito = True
+                                    st.error(f"❌ Erro: {conf_detectado.iloc[0]['Nome']} já tem férias na equipe '{torre_sel}' nesse período.")
+                            
+                            if not conflito:
                                 nova_linha = [nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login]
                                 ws.append_row(nova_linha)
-                                st.session_state.form_user = ""
-                                st.session_state.form_obs = "Férias 2026"
                                 st.success(f"✅ Férias registradas!")
                                 st.rerun()
 
             with col_grade:
                 st.subheader("Grade de Disponibilidade")
-                
-                # Filtros de Visualização
-                cf1, cf2 = st.columns(2)
-                with cf1:
-                    mes_f_sel = st.selectbox("Selecione o Mês:", t["meses"], index=datetime.now().month-1)
-                with cf2:
-                    equipe_filtro = st.selectbox("Filtrar por Equipe:", sorted(list(TORRES.keys())))
+                c1, c2 = st.columns(2)
+                with c1: mes_f_sel = st.selectbox("Selecione o Mês:", t["meses"], index=datetime.now().month-1)
+                with c2: equipe_filtro = st.selectbox("Filtrar por Equipe:", sorted(list(TORRES.keys())))
                 
                 m_idx = t["meses"].index(mes_f_sel) + 1
-                st.caption(f"Visualizando ocupação da torre: **{equipe_filtro}**")
+                st.caption(f"Visualizando ocupação para: **{equipe_filtro}**")
                 
-                dias_semana_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+                # Cabeçalho do Calendário
                 cols_h = st.columns(7)
-                for i, d_n in enumerate(dias_semana_nomes):
+                for i, d_n in enumerate(["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]):
                     cols_h[i].markdown(f"<p style='text-align:center; font-weight:bold; color:gray;'>{d_n}</p>", unsafe_allow_html=True)
 
                 cal = calendar.monthcalendar(2026, m_idx)
                 for week in cal:
                     cols_g = st.columns(7)
                     for i, day in enumerate(week):
-                        if day == 0:
-                            cols_g[i].write("")
+                        if day == 0: cols_g[i].write("")
                         else:
                             data_c = datetime(2026, m_idx, day).date()
                             status, cor = "Livre", "#28a745"
@@ -421,14 +408,12 @@ if check_login():
                                 df_viz = df_ferias.copy()
                                 df_viz['Data Início'] = pd.to_datetime(df_viz['Data Início'], dayfirst=True).dt.date
                                 df_viz['Data Final'] = pd.to_datetime(df_viz['Data Final'], dayfirst=True).dt.date
-                                # Aplica o filtro de equipe na visualização
                                 conf_v = df_viz[(df_viz['Equipe'] == equipe_filtro) & (data_c >= df_viz['Data Início']) & (data_c <= df_viz['Data Final'])]
                                 if not conf_v.empty:
-                                    status = conf_v.iloc[0]['Nome']
-                                    cor = "#dc3545"
+                                    status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
                             
                             cols_g[i].markdown(f"""<div style="background-color:{cor}; color:white; padding:5px; border-radius:5px; text-align:center; margin-bottom:8px; font-size:11px; height:55px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
-            
+
             st.divider()
-            st.subheader("📋 Últimos Registros")
+            st.subheader("📋 Log Geral de Registros")
             st.dataframe(df_ferias.tail(15), use_container_width=True, hide_index=True)
