@@ -79,6 +79,7 @@ I18N = {
         "log_tit": "📋 Próximas Férias (Ordem Cronológica)",
         "err_user": "Por favor, informe o seu usuário.",
         "err_data": "A data de início não pode ser maior que a data de término.",
+        "err_conflito": "❌ Erro: {nome} da equipe {equipe} já possui férias neste período. Um colega deve retornar para que outro saia.",
         "sucesso": "✅ Férias registradas!",
         "livre": "Livre",
         "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
@@ -128,6 +129,7 @@ I18N = {
         "log_tit": "📋 Próximas Vacaciones (Orden Cronológico)",
         "err_user": "Por favor, informe su usuario.",
         "err_data": "La fecha de inicio no puede ser mayor que la fecha de finalización.",
+        "err_conflito": "❌ Error: {nome} del equipo {equipe} ya tiene vacaciones en este periodo. Un colega debe regresar para que otro salga.",
         "sucesso": "✅ ¡Vacaciones registradas!",
         "livre": "Libre",
         "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
@@ -196,7 +198,6 @@ def gerar_escala_balanceada(nomes):
         d_nome = t["dias"][d_sem]
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         
-        # Flash Manhã
         ap_m = min([n for n in fila_base if n not in quem_ja_foi], key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
         b1_m = encontrar_backup_vivo(ap_m, nomes)
@@ -208,7 +209,6 @@ def gerar_escala_balanceada(nomes):
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={urllib.parse.quote(t['flash_m'])}&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
         
-        # Tarde / DOR
         quem_ja_foi.append(ap_m)
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
         cand_t = [n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi]
@@ -355,14 +355,36 @@ if check_login():
                     user_login = st.text_input(t["usuario_log"])
                     d_ini, d_fim = st.date_input(t["dt_inicio"]), st.date_input(t["dt_fim"])
                     obs_f = st.text_input(t["obs"], value=f"Férias {d_ini.year}")
+                    
                     if st.form_submit_button(t["btn_salvar"]):
                         if not user_login: st.error(t["err_user"])
                         elif d_ini > d_fim: st.error(t["err_data"])
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
-                            st.success(t["sucesso"])
-                            st.rerun()
+                            conflito = False
+                            
+                            # --- REGRA DE OURO: VALIDAÇÃO POR EQUIPE ---
+                            if not df_ferias.empty:
+                                df_check = df_ferias.copy()
+                                df_check['Data Início'] = pd.to_datetime(df_check['Data Início'], dayfirst=True).dt.date
+                                df_check['Data Final'] = pd.to_datetime(df_check['Data Final'], dayfirst=True).dt.date
+                                
+                                # Filtra férias da mesma equipe que sobrepõem o período solicitado
+                                conflitos = df_check[
+                                    (df_check['Equipe'] == torre_sel) & 
+                                    (d_ini <= df_check['Data Final']) & 
+                                    (d_fim >= df_check['Data Início'])
+                                ]
+                                
+                                if not conflitos.empty:
+                                    conflito = True
+                                    pessoa_conflito = conflitos.iloc[0]['Nome']
+                                    st.error(t["err_conflito"].format(nome=pessoa_conflito, equipe=torre_sel))
+                            
+                            if not conflito:
+                                ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
+                                st.success(t["sucesso"])
+                                st.rerun()
 
             with col_grade:
                 st.subheader(t["grade_tit"])
