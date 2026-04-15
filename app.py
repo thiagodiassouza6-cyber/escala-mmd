@@ -65,6 +65,7 @@ I18N = {
         "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
         "ferias_tit": "🌴 Planejamento de Férias",
         "reg_periodo": "Registrar Período",
+        "gerenciar_f": "⚙️ Gerenciar Minhas Férias",
         "colaborador": "Colaborador:",
         "usuario_log": "Seu Usuário (Obrigatório):",
         "dt_inicio": "Data de Início:",
@@ -76,11 +77,12 @@ I18N = {
         "sel_ano": "Ano:",
         "filtro_equipe": "Filtrar por Equipe:",
         "viz_ocupacao": "Ocupação: {equipe}",
-        "log_tit": "📋 Próximas Férias (Ordem Cronológica)",
+        "log_tit": "📋 Próximas Férias (Ativas)",
         "err_user": "Por favor, informe o seu usuário.",
         "err_data": "A data de início não pode ser maior que a data de término.",
         "err_conflito": "❌ Erro: {nome} da equipe {equipe} já possui férias neste período.",
         "sucesso": "✅ Férias registradas!",
+        "sucesso_del": "✅ Registro removido!",
         "livre": "Livre",
         "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     },
@@ -115,6 +117,7 @@ I18N = {
         "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "ferias_tit": "🌴 Planeamiento de Vacaciones",
         "reg_periodo": "Registrar Período",
+        "gerenciar_f": "⚙️ Gestionar mis Vacaciones",
         "colaborador": "Colaborador:",
         "usuario_log": "Tu Usuario (Obligatorio):",
         "dt_inicio": "Fecha de Inicio:",
@@ -126,11 +129,12 @@ I18N = {
         "sel_ano": "Año:",
         "filtro_equipe": "Filtrar por Equipo:",
         "viz_ocupacao": "Ocupación: {equipe}",
-        "log_tit": "📋 Próximas Vacaciones (Orden Cronológico)",
+        "log_tit": "📋 Próximas Vacaciones (Activas)",
         "err_user": "Por favor, informe su usuario.",
         "err_data": "La fecha de inicio no puede ser mayor que la fecha de finalización.",
         "err_conflito": "❌ Error: {nome} del equipo {equipe} ya tiene vacaciones en este periodo.",
         "sucesso": "✅ ¡Vacaciones registradas!",
+        "sucesso_del": "✅ ¡Registro eliminado!",
         "livre": "Libre",
         "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     }
@@ -138,34 +142,6 @@ I18N = {
 
 if "lang" not in st.session_state: st.session_state.lang = "PT"
 t = I18N[st.session_state.lang]
-
-# --- ACESSIBILIDADE ---
-def injetar_leitor_acessibilidade(lang_code):
-    components.html(f"""
-        <script>
-            const synth = window.speechSynthesis;
-            let ultimoTexto = "";
-            function falar(texto) {{
-                if (!texto || texto === ultimoTexto) return;
-                synth.cancel(); 
-                const ut = new SpeechSynthesisUtterance(texto);
-                ut.lang = '{lang_code}';
-                ut.rate = 1.1;
-                ultimoTexto = texto;
-                synth.speak(ut);
-                setTimeout(() => {{ ultimoTexto = ""; }}, 800);
-            }}
-            const docAlvo = window.parent.document;
-            docAlvo.addEventListener('mouseover', (e) => {{
-                const el = e.target;
-                const textoParaLer = (el.innerText || el.textContent).trim();
-                if (textoParaLer.length > 0 && !textoParaLer.includes("http")) {{
-                    falar(textoParaLer);
-                }}
-            }}, true);
-            docAlvo.addEventListener('mouseout', () => {{ synth.cancel(); }}, true);
-        </script>
-    """, height=0, width=0)
 
 # --- MOTOR DE REGRAS ESCALA ---
 MAPA_REFERENCIA = {
@@ -297,14 +273,10 @@ if check_login():
         st.session_state.lang = "PT" if "Português" in lang_opt else "ES"
         st.rerun()
 
-    if st.sidebar.toggle(t["acessibilidade"], value=False):
-        injetar_leitor_acessibilidade(t["lang_code"])
-
     st.sidebar.divider()
     with st.sidebar.expander(t["estrutura_tit"]):
         for torre, membros in TORRES.items(): st.markdown(f"**{torre}:** {', '.join(membros)}")
     
-    # --- ROTEIRO TERÇA (ATUALIZADO) ---
     with st.sidebar.expander(t["roteiro_ter"]):
         st.markdown("""
         **Terça-feira: Práticas + Iniciativas + Tracker + Work Plan**
@@ -323,7 +295,6 @@ if check_login():
         13. Behavior (Reconhecimento e notas)
         """)
 
-    # --- ROTEIRO QUINTA (ATUALIZADO) ---
     with st.sidebar.expander(t["roteiro_qui"]):
         st.markdown("""
         **Quinta-feira: Lead Time e SLA + FTR + CATS/BH + Workplan**
@@ -378,13 +349,21 @@ if check_login():
         st.title(t["ferias_tit"])
         sh = conectar_google_sheets()
         if sh:
-            try:
-                ws = sh.worksheet("DB_FERIAS")
-                df_ferias = pd.DataFrame(ws.get_all_records())
-            except: df_ferias = pd.DataFrame()
+            ws = sh.worksheet("DB_FERIAS")
+            raw_data = ws.get_all_records()
+            df_base = pd.DataFrame(raw_data) if raw_data else pd.DataFrame(columns=["Nome", "Data Início", "Data Final", "Equipe", "Obs", "Timestamp", "Usuario", "ID"])
+
+            # --- LIMPEZA AUTOMÁTICA (FILTRO PARA O PORTAL) ---
+            hoje_dt = datetime.now().date()
+            if not df_base.empty:
+                df_base['Data Final Obj'] = pd.to_datetime(df_base['Data Final'], dayfirst=True).dt.date
+                df_ativas = df_base[df_base['Data Final Obj'] >= hoje_dt].copy()
+            else:
+                df_ativas = df_base.copy()
 
             col_form, col_grade = st.columns([1, 2])
             with col_form:
+                # REGISTRO
                 st.subheader(t["reg_periodo"])
                 with st.form("form_ferias", clear_on_submit=True):
                     nome_sel = st.selectbox(t["colaborador"], sorted(list(PESSOA_PARA_TORRE.keys())))
@@ -397,19 +376,43 @@ if check_login():
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
                             conflito = False
-                            if not df_ferias.empty:
-                                df_check = df_ferias.copy()
-                                df_check['Data Início'] = pd.to_datetime(df_check['Data Início'], dayfirst=True).dt.date
-                                df_check['Data Final'] = pd.to_datetime(df_check['Data Final'], dayfirst=True).dt.date
-                                overlaps = df_check[(df_check['Equipe'] == torre_sel) & (d_ini <= df_check['Data Final']) & (d_fim >= df_check['Data Início'])]
-                                if not overlaps.empty:
-                                    conflito = True
-                                    st.error(t["err_conflito"].format(nome=overlaps.iloc[0]['Nome'], equipe=torre_sel))
+                            if not df_ativas.empty:
+                                df_check = df_ativas[df_ativas['Equipe'] == torre_sel]
+                                for _, row in df_check.iterrows():
+                                    if (d_ini <= row['Data Final Obj']) and (d_fim >= pd.to_datetime(row['Data Início'], dayfirst=True).date()):
+                                        conflito = True
+                                        st.error(t["err_conflito"].format(nome=row['Nome'], equipe=torre_sel))
+                                        break
                             
                             if not conflito:
-                                ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
+                                # Gera um ID único baseado no tempo para edição futura
+                                novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                                ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login, novo_id])
                                 st.success(t["sucesso"])
                                 st.rerun()
+                
+                # GERENCIAMENTO (EDIÇÃO/EXCLUSÃO)
+                st.divider()
+                st.subheader(t["gerenciar_f"])
+                filtro_u = st.text_input("Digite seu usuário para ver suas férias:", key="filtro_u").strip()
+                if filtro_u:
+                    minhas_f = df_ativas[df_ativas['Usuario'].str.lower() == filtro_u.lower()]
+                    if not minhas_f.empty:
+                        for idx, row in minhas_f.iterrows():
+                            with st.expander(f"📌 {row['Data Início']} até {row['Data Final']}"):
+                                st.write(f"**Obs:** {row['Obs']}")
+                                if st.button(f"Excluir Registro", key=f"del_{row['ID']}"):
+                                    # Localiza a linha correta pelo ID na planilha original (procurando na coluna H/ID)
+                                    ids_planilha = ws.col_values(8) # Coluna H
+                                    try:
+                                        linha_planilha = ids_planilha.index(str(row['ID'])) + 1
+                                        ws.delete_rows(linha_planilha)
+                                        st.success(t["sucesso_del"])
+                                        st.rerun()
+                                    except ValueError:
+                                        st.error("Erro ao localizar registro.")
+                    else:
+                        st.info("Nenhum registro ativo encontrado para este usuário.")
 
             with col_grade:
                 st.subheader(t["grade_tit"])
@@ -418,7 +421,6 @@ if check_login():
                 with c2: ano_sel = st.selectbox(t["sel_ano"], [2026, 2027, 2028, 2029], key="ano_f")
                 with c3: eq_sel = st.selectbox(t["filtro_equipe"], sorted(list(TORRES.keys())), key="eq_f")
                 m_idx = t["meses"].index(mes_sel) + 1
-                st.caption(t["viz_ocupacao"].format(equipe=eq_sel))
                 
                 cols_h = st.columns(7)
                 for i, d_n in enumerate(t["dias_semana_curto"]): cols_h[i].markdown(f"<p style='text-align:center;font-weight:bold;color:gray;'>{d_n}</p>", unsafe_allow_html=True)
@@ -430,18 +432,13 @@ if check_login():
                         else:
                             data_c = datetime(ano_sel, m_idx, day).date()
                             status, cor = t["livre"], "#28a745"
-                            if not df_ferias.empty:
-                                df_v = df_ferias.copy()
-                                df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
-                                df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
-                                conf_v = df_v[(df_v['Equipe'] == eq_sel) & (data_c >= df_v['Data Início']) & (data_c <= df_v['Data Final'])]
+                            if not df_ativas.empty:
+                                conf_v = df_ativas[(df_ativas['Equipe'] == eq_sel) & (data_c >= pd.to_datetime(df_ativas['Data Início'], dayfirst=True).dt.date) & (data_c <= df_ativas['Data Final Obj'])]
                                 if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
                             cols_g[i].markdown(f'<div style="background-color:{cor};color:white;padding:5px;border-radius:5px;text-align:center;margin-bottom:8px;font-size:11px;height:55px;"><small>{day}</small><br><b>{status}</b></div>', unsafe_allow_html=True)
 
             st.divider()
             st.subheader(t["log_tit"])
-            if not df_ferias.empty:
-                df_log = df_ferias.copy()
-                df_log['DT_INI'] = pd.to_datetime(df_log['Data Início'], dayfirst=True)
-                df_log = df_log.sort_values('DT_INI').drop(columns=['DT_INI'])
+            if not df_ativas.empty:
+                df_log = df_ativas[["Nome", "Data Início", "Data Final", "Equipe", "Obs"]].sort_values("Data Início")
                 st.dataframe(df_log, use_container_width=True, hide_index=True)
