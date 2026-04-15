@@ -21,7 +21,7 @@ def conectar_google_sheets():
     except Exception as e:
         return None
 
-# --- ESTRUTURA DE TIMES (PARA LÓGICA DE FÉRIAS E VALIDAÇÃO) ---
+# --- ESTRUTURA DE TIMES ---
 TORRES = {
     "Indireto Brasil": ["Debora", "Dani", "Abigail", "Luca", "Bruno", "Thiago", "Anna Laura"],
     "Material Fert Brasil": ["Amanda", "Sabrina", "Douglas"],
@@ -32,7 +32,7 @@ TORRES = {
 }
 PESSOA_PARA_TORRE = {p: t for t, pessoas in TORRES.items() for p in pessoas}
 
-# --- DICIONÁRIO DE TRADUÇÃO (SEU CÓDIGO ORIGINAL) ---
+# --- DICIONÁRIO DE TRADUÇÃO ---
 I18N = {
     "PT": {
         "lang_code": "pt-BR",
@@ -100,7 +100,7 @@ I18N = {
         "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mes",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-        "meses": ["Enero", "Fevereiro", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "pauta": {
             "lista": "📑 Lista de presencia", "tk": "⏱ Timekeeper", "escala": "🗓 Escala Horario", "behavior": "📈 Behavior",
             "plan": "🎯 Plan de accion", "prac": "✅ Practicas", "nps": "📊 NPS", "ini": "💡 Iniciativas",
@@ -115,7 +115,7 @@ if "lang" not in st.session_state:
 
 t = I18N[st.session_state.lang]
 
-# --- ACESSIBILIDADE (SEU CÓDIGO ORIGINAL) ---
+# --- ACESSIBILIDADE ---
 def injetar_leitor_acessibilidade(lang_code):
     components.html(f"""
         <script>
@@ -143,7 +143,7 @@ def injetar_leitor_acessibilidade(lang_code):
         </script>
     """, height=0, width=0)
 
-# --- MOTOR DE REGRAS (SEU CÓDIGO ORIGINAL) ---
+# --- MOTOR DE REGRAS ---
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
@@ -342,7 +342,7 @@ if check_login():
             for i, (_, r) in enumerate(gp.iterrows()):
                 with cols[i]: renderizar_card(r)
 
-    # --- ABA 2: FÉRIAS (COM REGRA DE VALIDAÇÃO DE EQUIPE) ---
+    # --- ABA 2: FÉRIAS ---
     with tab_ferias:
         st.title("🌴 Planejamento de Férias Integrado")
         sh = conectar_google_sheets()
@@ -353,32 +353,40 @@ if check_login():
             col_form, col_grade = st.columns([1, 2])
             with col_form:
                 st.subheader("Registrar Período")
-                with st.form("form_ferias", clear_on_submit=True):
-                    lista_colaboradores = sorted(list(PESSOA_PARA_TORRE.keys()))
-                    nome_sel = st.selectbox("Colaborador:", lista_colaboradores)
-                    user_login = st.text_input("Seu Usuário (Obrigatório):")
+                
+                # Memória de formulário para não perder dados no erro
+                lista_colaboradores = sorted(list(PESSOA_PARA_TORRE.keys()))
+                if "form_nome" not in st.session_state: st.session_state.form_nome = lista_colaboradores[0]
+                if "form_user" not in st.session_state: st.session_state.form_user = ""
+                if "form_obs" not in st.session_state: st.session_state.form_obs = "Férias 2026"
+
+                with st.form("form_ferias"):
+                    nome_sel = st.selectbox("Colaborador:", lista_colaboradores, index=lista_colaboradores.index(st.session_state.form_nome))
+                    user_login = st.text_input("Seu Usuário (Obrigatório):", value=st.session_state.form_user)
                     d_ini = st.date_input("Data de Início:")
                     d_fim = st.date_input("Data de Término:")
-                    obs_f = st.text_input("Observação:", "Férias 2026")
+                    obs_f = st.text_input("Observação:", value=st.session_state.form_obs)
                     
-                    if st.form_submit_button("💾 Salvar no Sheets"):
+                    btn_salvar = st.form_submit_button("💾 Salvar no Sheets")
+
+                    if btn_salvar:
+                        st.session_state.form_nome = nome_sel
+                        st.session_state.form_user = user_login
+                        st.session_state.form_obs = obs_f
+
                         if not user_login:
                             st.error("Por favor, informe o seu usuário.")
                         elif d_ini > d_fim:
                             st.error("A data de início não pode ser maior que a data de término.")
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            
-                            # --- REGRA DE VALIDAÇÃO DE CONFLITO NA MESMA TORRE ---
                             conflito_detectado = False
+                            
                             if not df_ferias.empty:
-                                # Converter as colunas do Sheets para datetime.date para comparar com o d_ini/d_fim do formulário
                                 df_validacao = df_ferias.copy()
                                 df_validacao['Data Início'] = pd.to_datetime(df_validacao['Data Início'], dayfirst=True).dt.date
                                 df_validacao['Data Final'] = pd.to_datetime(df_validacao['Data Final'], dayfirst=True).dt.date
                                 
-                                # Verifica intersecção de datas para a mesma equipe
-                                # Lógica: (Início_Novo <= Fim_Existente) AND (Fim_Novo >= Início_Existente)
                                 conflitos = df_validacao[
                                     (df_validacao['Equipe'] == torre_sel) & 
                                     (d_ini <= df_validacao['Data Final']) & 
@@ -388,7 +396,7 @@ if check_login():
                                 if not conflitos.empty:
                                     conflito_detectado = True
                                     pessoa_conflito = conflitos.iloc[0]['Nome']
-                                    st.error(f"❌ Erro de Agendamento: {pessoa_conflito} já tem férias marcadas na equipe '{torre_sel}' nesse período. Não é permitido duas pessoas da mesma equipe fora ao mesmo tempo.")
+                                    st.error(f"❌ Conflito: {pessoa_conflito} já tem férias nesta equipe ({torre_sel}) no período.")
 
                             if not conflito_detectado:
                                 nova_linha = [
@@ -396,7 +404,9 @@ if check_login():
                                     torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login
                                 ]
                                 ws.append_row(nova_linha)
-                                st.success(f"✅ Férias de {nome_sel} registradas com sucesso!")
+                                st.session_state.form_user = ""
+                                st.session_state.form_obs = "Férias 2026"
+                                st.success(f"✅ Férias registradas!")
                                 st.rerun()
 
             with col_grade:
@@ -405,37 +415,23 @@ if check_login():
                 m_idx = t["meses"].index(mes_f_sel) + 1
                 
                 torre_atual = PESSOA_PARA_TORRE.get(nome_sel)
-                st.caption(f"Visualizando ocupação para a equipe: **{torre_atual}**")
+                st.caption(f"Equipe: **{torre_atual}**")
                 
                 cal = calendar.monthcalendar(2026, m_idx)
                 cols_g = st.columns(7)
-                dias_semana_abrev = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]
-                for i, d_nome in enumerate(dias_semana_abrev):
-                    cols_g[i].write(f"**{d_nome}**")
-
                 for week in cal:
                     for i, day in enumerate(week):
-                        if day == 0:
-                            cols_g[i].write("")
+                        if day == 0: cols_g[i].write("")
                         else:
                             data_c = datetime(2026, m_idx, day).date()
                             status, cor = "Livre", "#28a745"
-                            
                             if not df_ferias.empty:
                                 df_viz = df_ferias.copy()
                                 df_viz['Data Início'] = pd.to_datetime(df_viz['Data Início'], dayfirst=True).dt.date
                                 df_viz['Data Final'] = pd.to_datetime(df_viz['Data Final'], dayfirst=True).dt.date
-                                
-                                conflito_viz = df_viz[
-                                    (df_viz['Equipe'] == torre_atual) & 
-                                    (data_c >= df_viz['Data Início']) & 
-                                    (data_c <= df_viz['Data Final'])
-                                ]
-                                if not conflito_viz.empty:
-                                    status, cor = conflito_viz.iloc[0]['Nome'], "#dc3545"
-                            
+                                conf_v = df_viz[(df_viz['Equipe'] == torre_atual) & (data_c >= df_viz['Data Início']) & (data_c <= df_viz['Data Final'])]
+                                if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
                             cols_g[i].markdown(f"""<div style="background-color:{cor}; color:white; padding:5px; border-radius:5px; text-align:center; margin-bottom:5px; font-size:10px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
             
             st.divider()
-            st.subheader("📋 Log Geral de Registros")
             st.dataframe(df_ferias.tail(10), use_container_width=True)
