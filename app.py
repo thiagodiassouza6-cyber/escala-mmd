@@ -61,7 +61,7 @@ I18N = {
         "resp_m": "Responsável Manhã",
         "resp_t": "Responsável Tarde",
         "tipo_t": "Tipo Tarde/DOR",
-        "mes_col": "Mês",
+        "mes_col": "Mes",
         "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
         "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
         "pauta": {
@@ -354,7 +354,7 @@ if check_login():
             with col_form:
                 st.subheader("Registrar Período")
                 
-                # Memória de formulário para não perder dados no erro
+                # Memória do formulário (Session State)
                 lista_colaboradores = sorted(list(PESSOA_PARA_TORRE.keys()))
                 if "form_nome" not in st.session_state: st.session_state.form_nome = lista_colaboradores[0]
                 if "form_user" not in st.session_state: st.session_state.form_user = ""
@@ -370,6 +370,7 @@ if check_login():
                     btn_salvar = st.form_submit_button("💾 Salvar no Sheets")
 
                     if btn_salvar:
+                        # Salva o estado atual
                         st.session_state.form_nome = nome_sel
                         st.session_state.form_user = user_login
                         st.session_state.form_obs = obs_f
@@ -383,27 +384,21 @@ if check_login():
                             conflito_detectado = False
                             
                             if not df_ferias.empty:
-                                df_validacao = df_ferias.copy()
-                                df_validacao['Data Início'] = pd.to_datetime(df_validacao['Data Início'], dayfirst=True).dt.date
-                                df_validacao['Data Final'] = pd.to_datetime(df_validacao['Data Final'], dayfirst=True).dt.date
+                                df_v = df_ferias.copy()
+                                df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
+                                df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
                                 
-                                conflitos = df_validacao[
-                                    (df_validacao['Equipe'] == torre_sel) & 
-                                    (d_ini <= df_validacao['Data Final']) & 
-                                    (d_fim >= df_validacao['Data Início'])
-                                ]
-                                
+                                # Verifica conflito na mesma equipe
+                                conflitos = df_v[(df_v['Equipe'] == torre_sel) & (d_ini <= df_v['Data Final']) & (d_fim >= df_v['Data Início'])]
                                 if not conflitos.empty:
                                     conflito_detectado = True
                                     pessoa_conflito = conflitos.iloc[0]['Nome']
-                                    st.error(f"❌ Conflito: {pessoa_conflito} já tem férias nesta equipe ({torre_sel}) no período.")
+                                    st.error(f"❌ Conflito Detectado: {pessoa_conflito} já tem férias nesta equipe ({torre_sel}) para este período.")
 
                             if not conflito_detectado:
-                                nova_linha = [
-                                    nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), 
-                                    torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login
-                                ]
+                                nova_linha = [nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login]
                                 ws.append_row(nova_linha)
+                                # Limpa campos voláteis no sucesso
                                 st.session_state.form_user = ""
                                 st.session_state.form_obs = "Férias 2026"
                                 st.success(f"✅ Férias registradas!")
@@ -413,15 +408,22 @@ if check_login():
                 st.subheader("Grade de Disponibilidade")
                 mes_f_sel = st.selectbox("Selecione o Mês:", t["meses"], index=datetime.now().month-1)
                 m_idx = t["meses"].index(mes_f_sel) + 1
-                
                 torre_atual = PESSOA_PARA_TORRE.get(nome_sel)
-                st.caption(f"Equipe: **{torre_atual}**")
+                st.caption(f"Visualizando ocupação para: **{torre_atual}**")
                 
+                # Cabeçalho Dias da Semana
+                dias_semana_nomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+                cols_h = st.columns(7)
+                for i, d_n in enumerate(dias_semana_nomes):
+                    cols_h[i].markdown(f"<p style='text-align:center; font-weight:bold; color:gray;'>{d_n}</p>", unsafe_allow_html=True)
+
+                # Calendário Corrigido
                 cal = calendar.monthcalendar(2026, m_idx)
-                cols_g = st.columns(7)
                 for week in cal:
+                    cols_g = st.columns(7)
                     for i, day in enumerate(week):
-                        if day == 0: cols_g[i].write("")
+                        if day == 0:
+                            cols_g[i].write("")
                         else:
                             data_c = datetime(2026, m_idx, day).date()
                             status, cor = "Livre", "#28a745"
@@ -431,7 +433,9 @@ if check_login():
                                 df_viz['Data Final'] = pd.to_datetime(df_viz['Data Final'], dayfirst=True).dt.date
                                 conf_v = df_viz[(df_viz['Equipe'] == torre_atual) & (data_c >= df_viz['Data Início']) & (data_c <= df_viz['Data Final'])]
                                 if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
-                            cols_g[i].markdown(f"""<div style="background-color:{cor}; color:white; padding:5px; border-radius:5px; text-align:center; margin-bottom:5px; font-size:10px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
+                            
+                            cols_g[i].markdown(f"""<div style="background-color:{cor}; color:white; padding:5px; border-radius:5px; text-align:center; margin-bottom:8px; font-size:11px; height:55px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
             
             st.divider()
-            st.dataframe(df_ferias.tail(10), use_container_width=True)
+            st.subheader("📋 Últimos Registros")
+            st.dataframe(df_ferias.tail(10), use_container_width=True, hide_index=True)
