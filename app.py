@@ -77,7 +77,7 @@ I18N = {
         "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mes",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "meses": ["Enero", "Febrero", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "pauta": {
             "lista": "📑 Lista de presencia", "tk": "⏱ Timekeeper", "escala": "🗓 Escala Horario", "behavior": "📈 Behavior",
             "plan": "🎯 Plan de accion", "prac": "✅ Practicas", "nps": "📊 NPS", "ini": "💡 Iniciativas",
@@ -120,7 +120,7 @@ def injetar_leitor_acessibilidade(lang_code):
         </script>
     """, height=0, width=0)
 
-# --- CONFIGURAÇÕES E MOTOR ---
+# --- MOTOR DE REGRAS ---
 SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 USER_ACCESS = "MMD-Board"
@@ -176,7 +176,6 @@ def gerar_escala_balanceada(nomes):
         d_nome = t["dias"][d_sem]
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         
-        # Manhã
         ap_m = min([n for n in fila_base if n not in quem_ja_foi], key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
         quem_ja_foi.append(ap_m)
@@ -188,7 +187,6 @@ def gerar_escala_balanceada(nomes):
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={urllib.parse.quote(t['flash_m'])}&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
 
-        # Tarde/DOR
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
         cand_t = [n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi]
         ap_t = min(cand_t, key=lambda x: cont_dor[x] if tipo_t == "DOR" else cont_total[x])
@@ -207,27 +205,33 @@ def exportar_excel_limpo(df_total, mes_nome=None):
     output = io.BytesIO()
     df_c = df_total.copy()
     df_c['dt_obj'] = pd.to_datetime(df_c['Data'], format='%d/%m/%Y')
+    df_c = df_c.sort_values('dt_obj')
     meses_map = {i+1: nome for i, nome in enumerate(t["meses"])}
     df_c['Mês'] = df_c['dt_obj'].dt.month.map(meses_map)
+    
     m = df_c[df_c['Reunião'] == t['flash_m']][['Mês', 'Data', 'Dia', 'Apresentador', 'Backup']].rename(columns={'Apresentador':t['resp_m'], 'Backup':t['backup'] + ' M'})
     t_df = df_c[df_c['Reunião'].isin(['Flash Tarde', 'DOR'])][['Data', 'Apresentador', 'Backup', 'Reunião']].rename(columns={'Apresentador':t['resp_t'], 'Backup':t['backup'] + ' T', 'Reunião':t['tipo_t']})
-    df_f = pd.merge(m, t_df, on='Data', how='outer').fillna("").sort_values('Data')
+    
+    df_f = pd.merge(m, t_df, on='Data', how='outer').fillna("")
+    df_f['dt_sort'] = pd.to_datetime(df_f['Data'], format='%d/%m/%Y')
+    df_f = df_f.sort_values('dt_sort')
     if mes_nome: df_f = df_f[df_f['Mês'] == mes_nome]
 
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook, worksheet = writer.book, writer.book.add_worksheet('Escala')
         h_fmt = workbook.add_format({'bold': True, 'bg_color': '#ff4b4b', 'font_color': 'white', 'border': 1, 'align': 'center'})
-        m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center'})
+        m_fmt = workbook.add_format({'bold': True, 'bg_color': '#A6A6A6', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
         c_fmt = workbook.add_format({'border': 1, 'align': 'center'})
         cols = ['Data', 'Dia', t['resp_m'], t['backup'] + ' M', t['tipo_t'], t['resp_t'], t['backup'] + ' T']
         for i, col in enumerate(cols): 
             worksheet.write(0, i, col, h_fmt)
             worksheet.set_column(i, i, 18)
-        row_idx, mes_at = 1, ""
+            
+        row_idx, mes_atual = 1, ""
         for _, row in df_f.iterrows():
-            if row['Mês'] != mes_at:
-                mes_at = row['Mês']
-                worksheet.merge_range(row_idx, 0, row_idx, 6, mes_at.upper(), m_fmt)
+            if row['Mês'] != mes_atual:
+                mes_atual = row['Mês']
+                worksheet.merge_range(row_idx, 0, row_idx, 6, mes_atual.upper(), m_fmt)
                 row_idx += 1
             for j, c in enumerate(cols): worksheet.write(row_idx, j, row[c] if c in row else "", c_fmt)
             row_idx += 1
@@ -258,18 +262,14 @@ if check_login():
         injetar_leitor_acessibilidade(t["lang_code"])
     
     st.sidebar.divider()
-    
-    # Roteiro Terça (Fechado por padrão)
     with st.sidebar.expander(t["roteiro_ter"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['prac']} + {t['pauta']['ini']} + {t['pauta']['track']} + {t['pauta']['work']}")
         st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['prac']}\n- {t['pauta']['nps']}\n- {t['pauta']['ini']}\n- {t['pauta']['track']}\n- {t['pauta']['work']}\n- {t['pauta']['plan']} ({t['pauta']['issue']})\n- 🛡 SHE\n- 🏆 Behavior")
 
-    # Roteiro Quinta (Fechado por padrão)
     with st.sidebar.expander(t["roteiro_qui"], expanded=False):
         st.markdown(f"**Pauta:** {t['pauta']['lt']} + {t['pauta']['ftr']} + {t['pauta']['cats']} + {t['pauta']['work']}")
         st.markdown(f"- {t['pauta']['lista']}\n- {t['pauta']['tk']}\n- {t['pauta']['escala']}\n- {t['pauta']['behavior']}\n- {t['pauta']['plan']}\n- {t['pauta']['lt']}\n- {t['pauta']['ftr']}\n- {t['pauta']['cats']}\n- {t['pauta']['work']}\n- {t['pauta']['issue']}\n- {t['pauta']['plan']}\n- 🛡 SHE\n- 🏆 Behavior")
 
-    # Estrutura de Times (Fechado por padrão)
     with st.sidebar.expander(t["estrutura_tit"], expanded=False):
         st.markdown("""
         **Indireto Brasil:** Debora, Dani, Abigail, Luca, Bruno, Thiago, Anna
