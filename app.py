@@ -109,7 +109,7 @@ I18N = {
         "tipo_t": "Tipo Tarde/DOR",
         "mes_col": "Mes",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
-        "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        "meses": ["Enero", "Fevereiro", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
         "ferias_tit": "🌴 Planificación de Vacaciones Integrada",
         "reg_periodo": "Registrar Período",
         "colaborador": "Colaborador:",
@@ -132,10 +132,11 @@ I18N = {
     }
 }
 
+# Inicialização do Idioma
 if "lang" not in st.session_state: st.session_state.lang = "PT"
 t = I18N[st.session_state.lang]
 
-# --- ACESSIBILIDADE E LOGIN ---
+# --- LOGIN ---
 def check_login():
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
     if not st.session_state.logged_in:
@@ -153,10 +154,7 @@ def check_login():
         return False
     return True
 
-# --- MOTOR DE ESCALAS ---
-SHEET_ID = "1rFbrhxG72T2qhT2lMclAyLtjlHgtqvbxHFrVZ_KlmAU"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
-
+# --- MOTOR DE REGRAS ---
 MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", "Ariel": "Rafael", 
     "Bianca M.": "Ariel", "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Dani": "Jesus", 
@@ -182,12 +180,10 @@ def gerar_escala_balanceada(nomes):
     cont_total, cont_dor = {n: 0 for n in nomes}, {n: 0 for n in nomes_dor}
     dias_range = pd.date_range(datetime(2026, 1, 1), datetime(2026, 12, 31), freq='B')
     escala = []
-    
     for dia in dias_range:
         data_s, sem, d_sem = dia.strftime("%d/%m/%Y"), dia.isocalendar()[1], dia.weekday()
         d_nome = t["dias"][d_sem]
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
-        
         ap_m = min([n for n in fila_base if n not in quem_ja_foi], key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
         quem_ja_foi.append(ap_m)
@@ -196,30 +192,36 @@ def gerar_escala_balanceada(nomes):
             "Apresentador": ap_m, "Backup": encontrar_backup_vivo(ap_m, nomes),
             "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={urllib.parse.quote(t['flash_m'])}&startdt={dia.strftime('%Y-%m-%d')}T09:45:00"
         })
-
         tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
         cand_t = [n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi]
         ap_t = min(cand_t, key=lambda x: cont_dor[x] if tipo_t == "DOR" else cont_total[x])
         if tipo_t == "DOR": cont_dor[ap_t] += 1
         cont_total[ap_t] += 1
-        escala.append({
-            "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": tipo_t,
-            "Apresentador": ap_t, "Backup": encontrar_backup_vivo(ap_t, nomes),
-            "Link": f"https://outlook.office.com/calendar/0/deeplink/compose?subject={urllib.parse.quote(tipo_t)}&startdt={dia.strftime('%Y-%m-%d')}T15:00:00"
-        })
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": tipo_t, "Apresentador": ap_t, "Backup": encontrar_backup_vivo(ap_t, nomes), "Link": ""})
     return pd.DataFrame(escala)
 
 # --- EXECUÇÃO ---
 if check_login():
-    # Sidebar
+    # Sidebar: Tradução Instantânea
     st.sidebar.title("🌐 Idioma / Lenguaje")
     lang_opt = st.sidebar.radio("Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
-    st.session_state.lang = "PT" if "Português" in lang_opt else "ES"
-    
+    new_lang = "PT" if "Português" in lang_opt else "ES"
+    if new_lang != st.session_state.lang:
+        st.session_state.lang = new_lang
+        st.rerun()
+
     st.sidebar.divider()
+    
+    # Restauração dos Roteiros e Estrutura na Sidebar
     with st.sidebar.expander(t["estrutura_tit"], expanded=False):
         for torre, membros in TORRES.items():
             st.markdown(f"**{torre}:** {', '.join(membros)}")
+
+    with st.sidebar.expander(t["roteiro_ter"], expanded=False):
+        st.markdown(f"- Lista Presença\n- Timekeeper\n- Escala\n- Behavior\n- Plano de Ação")
+
+    with st.sidebar.expander(t["roteiro_qui"], expanded=False):
+        st.markdown(f"- Lead Time\n- FTR\n- Cats+BH\n- Work Plan")
 
     # Abas
     tab_escala, tab_ferias = st.tabs(["📅 Escalas", "🌴 " + t["ferias_tit"].split(" ")[1]])
@@ -227,18 +229,14 @@ if check_login():
     # --- ABA 1: ESCALAS ---
     with tab_escala:
         st.title(t["titulo"])
-        try:
-            df_csv = pd.read_csv(SHEET_URL)
-            nomes = sorted([n for n in df_csv['Funcionario'].dropna().unique() if n not in ["Faiha", "Sonia", "Enrique", "Bianca S."]])
-        except: nomes = sorted(list(MAPA_REFERENCIA.keys()))
-        
+        nomes = sorted(list(MAPA_REFERENCIA.keys()))
         df_total = gerar_escala_balanceada(nomes)
         
         busca = st.selectbox(t["buscar"], [t["todos"]] + nomes)
-        df_filtrado = df_total if busca == t["todos"] else df_total[df_total["Apresentador"] == busca]
+        df_f = df_total if busca == t["todos"] else df_total[df_total["Apresentador"] == busca]
         
         s_idx = st.select_slider(t["semana"], options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
-        df_s = df_filtrado[df_filtrado["Semana"] == s_idx]
+        df_s = df_f[df_f["Semana"] == s_idx]
         
         for dt, gp in df_s.groupby("Data", sort=False):
             st.markdown(f"**{gp['Dia'].iloc[0]} - {dt}**")
@@ -254,8 +252,11 @@ if check_login():
         st.title(t["ferias_tit"])
         sh = conectar_google_sheets()
         if sh:
-            ws = sh.worksheet("DB_FERIAS")
-            df_ferias = pd.DataFrame(ws.get_all_records())
+            try:
+                ws = sh.worksheet("DB_FERIAS")
+                df_ferias = pd.DataFrame(ws.get_all_records())
+            except: df_ferias = pd.DataFrame()
+
             col_form, col_grade = st.columns([1, 2])
             
             with col_form:
@@ -271,16 +272,9 @@ if check_login():
                         elif d_ini > d_fim: st.error(t["err_data"])
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            df_v = df_ferias.copy()
-                            df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
-                            df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
-                            conf = df_v[(df_v['Equipe'] == torre_sel) & (d_ini <= df_v['Data Final']) & (d_fim >= df_v['Data Início'])]
-                            if not conf.empty:
-                                st.error(t["err_conflito"].format(nome=conf.iloc[0]['Nome'], equipe=torre_sel))
-                            else:
-                                ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
-                                st.success(t["sucesso"])
-                                st.rerun()
+                            ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
+                            st.success(t["sucesso"])
+                            st.rerun()
 
             with col_grade:
                 st.subheader(t["grade_tit"])
@@ -310,3 +304,11 @@ if check_login():
                                 conf_v = df_viz[(df_viz['Equipe'] == eq_sel) & (data_c >= df_viz['Data Início']) & (data_c <= df_viz['Data Final'])]
                                 if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
                             cols_g[i].markdown(f"""<div style="background-color:{cor};color:white;padding:5px;border-radius:5px;text-align:center;margin-bottom:8px;font-size:11px;height:55px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
+
+            # --- RESTAURAÇÃO DO LOG DE REGISTROS ---
+            st.divider()
+            st.subheader(t["log_tit"])
+            if not df_ferias.empty:
+                st.dataframe(df_ferias.tail(15), use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum registro encontrado.")
