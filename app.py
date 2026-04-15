@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib.parse
+import streamlit.components.v1 as components
+import io
 import random
 import gspread
 import calendar
@@ -34,7 +36,7 @@ PESSOA_PARA_TORRE = {p: t for t, pessoas in TORRES.items() for p in pessoas}
 I18N = {
     "PT": {
         "lang_code": "pt-BR",
-        "titulo": "🚀 MMD | Portal de Gestão",
+        "titulo": "🚀 MMD | Portal de Gestão 2026",
         "login_tit": "Portal de Gestão MMD",
         "usuario": "Usuário",
         "senha": "Senha",
@@ -42,8 +44,6 @@ I18N = {
         "roteiro_ter": "📝 Roteiro Terça: Práticas + Iniciativas",
         "roteiro_qui": "📝 Roteiro Quinta: Lead Time + SLA",
         "estrutura_tit": "👥 Estrutura de Times",
-        "tab_escalas": "📅 Escalas",
-        "tab_ferias": "🌴 Férias",
         "buscar": "🔍 Buscar por Apresentador:",
         "todos": "Todos",
         "semana": "Semana:",
@@ -51,7 +51,7 @@ I18N = {
         "flash_m": "Flash Manhã",
         "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
         "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
-        "ferias_tit": "🌴 Planejamento de Férias Integrado",
+        "ferias_tit": "🌴 Planejamento de Férias",
         "reg_periodo": "Registrar Período",
         "colaborador": "Colaborador:",
         "usuario_log": "Seu Usuário (Obrigatório):",
@@ -63,18 +63,18 @@ I18N = {
         "sel_mes": "Mês:",
         "sel_ano": "Ano:",
         "filtro_equipe": "Filtrar por Equipe:",
-        "viz_ocupacao": "Visualizando ocupação: {equipe}",
+        "viz_ocupacao": "Ocupação: {equipe}",
         "log_tit": "📋 Próximas Férias (Ordem Cronológica)",
         "err_user": "Por favor, informe o seu usuário.",
         "err_data": "A data de início não pode ser maior que a data de término.",
-        "err_conflito": "❌ Erro: {nome} já tem férias na equipe '{equipe}' nesse período. Não é permitido 2 pessoas do mesmo time fora.",
+        "err_conflito": "❌ Erro: {nome} já tem férias na equipe '{equipe}' nesse período.",
         "sucesso": "✅ Férias registradas!",
         "livre": "Livre",
         "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     },
     "ES": {
         "lang_code": "es-ES",
-        "titulo": "🚀 MMD | Portal de Gestión",
+        "titulo": "🚀 MMD | Portal de Gestión 2026",
         "login_tit": "Portal de Gestión MMD",
         "usuario": "Usuario",
         "senha": "Contraseña",
@@ -82,8 +82,6 @@ I18N = {
         "roteiro_ter": "📝 Guion Martes: Prácticas + Iniciativas",
         "roteiro_qui": "📝 Guion Jueves: Lead Time + SLA",
         "estrutura_tit": "👥 Estructura de Equipos",
-        "tab_escalas": "📅 Escalas",
-        "tab_ferias": "🌴 Vacaciones",
         "buscar": "🔍 Buscar por Presentador:",
         "todos": "Todos",
         "semana": "Semana:",
@@ -91,7 +89,7 @@ I18N = {
         "flash_m": "Flash Mañana",
         "dias": ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"],
         "meses": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
-        "ferias_tit": "🌴 Planificación de Vacaciones Integrada",
+        "ferias_tit": "🌴 Planeamiento de Vacaciones",
         "reg_periodo": "Registrar Período",
         "colaborador": "Colaborador:",
         "usuario_log": "Tu Usuario (Obligatorio):",
@@ -103,18 +101,17 @@ I18N = {
         "sel_mes": "Mes:",
         "sel_ano": "Año:",
         "filtro_equipe": "Filtrar por Equipo:",
-        "viz_ocupacao": "Visualizando ocupación: {equipe}",
+        "viz_ocupacao": "Ocupación: {equipe}",
         "log_tit": "📋 Próximas Vacaciones (Orden Cronológico)",
         "err_user": "Por favor, informe su usuario.",
         "err_data": "La fecha de inicio no puede ser mayor que la fecha de finalización.",
-        "err_conflito": "❌ Error: {nome} ya tiene vacaciones en el equipo '{equipe}' en este período. No se permiten 2 personas del mismo equipo fuera.",
+        "err_conflito": "❌ Error: {nome} ya tiene vacaciones en el equipo '{equipe}' en este período.",
         "sucesso": "✅ ¡Vacaciones registradas!",
         "livre": "Libre",
         "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     }
 }
 
-# Inicialização do Idioma
 if "lang" not in st.session_state: st.session_state.lang = "PT"
 t = I18N[st.session_state.lang]
 
@@ -136,7 +133,7 @@ def check_login():
         return False
     return True
 
-# --- MOTOR DE REGRAS (TRAVADO PARA NÃO MUDAR ESCALA) ---
+# --- MOTOR DE REGRAS ---
 MAPA_REFERENCIA = {
     "Abigail": "Dani", "Amanda": "Mijal", "Anna Laura": "Soledad", "Ariel": "Rafael", 
     "Bianca M.": "Ariel", "Bruna": "Anna Laura", "Bruno": "Bianca M.", "Dani": "Jesus", 
@@ -154,7 +151,7 @@ def encontrar_backup_vivo(nome, nomes_ativos):
     return "Sem Backup"
 
 def gerar_escala_balanceada(nomes):
-    random.seed(42) # Mantém o sorteio idêntico
+    random.seed(42)
     fila_base = nomes.copy()
     random.shuffle(fila_base)
     nomes_dor = [n for n in nomes if n not in ["Dani", "Rafael"]]
@@ -168,58 +165,48 @@ def gerar_escala_balanceada(nomes):
         quem_ja_foi = [e['Apresentador'] for e in escala if e['Semana'] == sem]
         ap_m = min([n for n in fila_base if n not in quem_ja_foi], key=lambda x: cont_total[x])
         cont_total[ap_m] += 1
-        escala.append({
-            "Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": t["flash_m"],
-            "Apresentador": ap_m, "Backup": encontrar_backup_vivo(ap_m, nomes)
-        })
+        quem_ja_foi.append(ap_m)
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": t["flash_m"], "Apresentador": ap_m, "Backup": encontrar_backup_vivo(ap_m, nomes)})
+        
+        tipo_t = "DOR" if d_sem in [1, 3] else "Flash Tarde"
+        cand_t = [n for n in (nomes_dor if tipo_t == "DOR" else fila_base) if n not in quem_ja_foi]
+        ap_t = min(cand_t, key=lambda x: cont_dor[x] if tipo_t == "DOR" else cont_total[x])
+        if tipo_t == "DOR": cont_dor[ap_t] += 1
+        cont_total[ap_t] += 1
+        escala.append({"Semana": sem, "Data": data_s, "Dia": d_nome, "Reunião": tipo_t, "Apresentador": ap_t, "Backup": encontrar_backup_vivo(ap_t, nomes)})
     return pd.DataFrame(escala)
 
 # --- EXECUÇÃO ---
 if check_login():
-    # Sidebar
     st.sidebar.title("🌐 Idioma / Lenguaje")
     lang_opt = st.sidebar.radio("Selecione:", ["🇧🇷 Português", "🇪🇸 Español"], index=0 if st.session_state.lang == "PT" else 1)
-    new_lang = "PT" if "Português" in lang_opt else "ES"
-    if new_lang != st.session_state.lang:
-        st.session_state.lang = new_lang
+    if ("Português" in lang_opt and st.session_state.lang == "ES") or ("Español" in lang_opt and st.session_state.lang == "PT"):
+        st.session_state.lang = "PT" if "Português" in lang_opt else "ES"
         st.rerun()
 
     st.sidebar.divider()
-    with st.sidebar.expander(t["estrutura_tit"], expanded=False):
-        for torre, membros in TORRES.items():
-            st.markdown(f"**{torre}:** {', '.join(membros)}")
+    with st.sidebar.expander(t["estrutura_tit"]):
+        for torre, membros in TORRES.items(): st.markdown(f"**{torre}:** {', '.join(membros)}")
+    with st.sidebar.expander(t["roteiro_ter"]): st.markdown("- Lista Presença\n- Timekeeper\n- Escala\n- Behavior\n- Plano de Ação")
+    with st.sidebar.expander(t["roteiro_qui"]): st.markdown("- Lead Time\n- FTR\n- Cats+BH\n- Work Plan")
 
-    with st.sidebar.expander(t["roteiro_ter"], expanded=False):
-        st.markdown(f"- Lista Presença\n- Timekeeper\n- Escala\n- Behavior\n- Plano de Ação")
+    tab_escala, tab_ferias = st.tabs(["📅 Escalas", "🌴 " + ("Férias" if st.session_state.lang == "PT" else "Vacaciones")])
 
-    with st.sidebar.expander(t["roteiro_qui"], expanded=False):
-        st.markdown(f"- Lead Time\n- FTR\n- Cats+BH\n- Work Plan")
-
-    # Abas
-    tab_escala, tab_ferias = st.tabs([t["tab_escalas"], t["tab_ferias"]])
-
-    # --- ABA 1: ESCALAS ---
     with tab_escala:
         st.title(t["titulo"])
         nomes = sorted(list(MAPA_REFERENCIA.keys()))
         df_total = gerar_escala_balanceada(nomes)
-        
         busca = st.selectbox(t["buscar"], [t["todos"]] + nomes)
-        df_f = df_total if busca == t["todos"] else df_total[df_total["Apresentador"] == busca]
-        
         s_idx = st.select_slider(t["semana"], options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
-        df_s = df_f[df_f["Semana"] == s_idx]
-        
+        df_s = df_total[df_total["Semana"] == s_idx]
+        if busca != t["todos"]: df_s = df_s[df_s["Apresentador"] == busca]
         for dt, gp in df_s.groupby("Data", sort=False):
             st.markdown(f"**{gp['Dia'].iloc[0]} - {dt}**")
             cols = st.columns(len(gp))
             for i, (_, r) in enumerate(gp.iterrows()):
                 with cols[i]:
-                    st.markdown(f"""<div style="background-color:#f0f2f6;padding:15px;border-radius:10px;border-left:5px solid #ff4b4b;color:#333;">
-                        <b>{r['Reunião']}</b><br><span style="font-size:18px;font-weight:bold;">🏆 {r['Apresentador']}</span><br>
-                        <small>{t['backup']}: {r['Backup']}</small></div>""", unsafe_allow_html=True)
+                    st.markdown(f'<div style="background-color:#f0f2f6;padding:15px;border-radius:10px;border-left:5px solid #ff4b4b;color:#333;"><b>{r["Reunião"]}</b><br><span style="font-size:18px;font-weight:bold;">🏆 {r["Apresentador"]}</span><br><small>{t["backup"]}: {r["Backup"]}</small></div>', unsafe_allow_html=True)
 
-    # --- ABA 2: FÉRIAS ---
     with tab_ferias:
         st.title(t["ferias_tit"])
         sh = conectar_google_sheets()
@@ -230,31 +217,18 @@ if check_login():
             except: df_ferias = pd.DataFrame()
 
             col_form, col_grade = st.columns([1, 2])
-            
             with col_form:
                 st.subheader(t["reg_periodo"])
                 with st.form("form_ferias"):
                     nome_sel = st.selectbox(t["colaborador"], sorted(list(PESSOA_PARA_TORRE.keys())))
                     user_login = st.text_input(t["usuario_log"])
                     d_ini, d_fim = st.date_input(t["dt_inicio"]), st.date_input(t["dt_fim"])
-                    obs_f = st.text_input(t["obs"], value=f"Férias {datetime.now().year}")
-                    
+                    obs_f = st.text_input(t["obs"], value=f"Férias {d_ini.year}")
                     if st.form_submit_button(t["btn_salvar"]):
                         if not user_login: st.error(t["err_user"])
                         elif d_ini > d_fim: st.error(t["err_data"])
                         else:
                             torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            # Verificação de Conflito de Equipe
-                            if not df_ferias.empty:
-                                df_check = df_ferias.copy()
-                                df_check['Data Início'] = pd.to_datetime(df_check['Data Início'], dayfirst=True).dt.date
-                                df_check['Data Final'] = pd.to_datetime(df_check['Data Final'], dayfirst=True).dt.date
-                                conflito = df_check[(df_check['Equipe'] == torre_sel) & (d_ini <= df_check['Data Final']) & (d_fim >= df_check['Data Início'])]
-                                
-                                if not conflito.empty:
-                                    st.error(t["err_conflito"].format(nome=conflito.iloc[0]['Nome'], equipe=torre_sel))
-                                    st.stop()
-
                             ws.append_row([nome_sel, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), torre_sel, obs_f, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login])
                             st.success(t["sucesso"])
                             st.rerun()
@@ -265,14 +239,10 @@ if check_login():
                 with c1: mes_sel = st.selectbox(t["sel_mes"], t["meses"], index=datetime.now().month-1)
                 with c2: ano_sel = st.selectbox(t["sel_ano"], [2026, 2027, 2028, 2029])
                 with c3: eq_sel = st.selectbox(t["filtro_equipe"], sorted(list(TORRES.keys())))
-                
                 m_idx = t["meses"].index(mes_sel) + 1
                 st.caption(t["viz_ocupacao"].format(equipe=eq_sel))
-                
                 cols_h = st.columns(7)
-                for i, d_n in enumerate(t["dias_semana_curto"]):
-                    cols_h[i].markdown(f"<p style='text-align:center;font-weight:bold;color:gray;'>{d_n}</p>", unsafe_allow_html=True)
-
+                for i, d_n in enumerate(t["dias_semana_curto"]): cols_h[i].markdown(f"<p style='text-align:center;font-weight:bold;color:gray;'>{d_n}</p>", unsafe_allow_html=True)
                 cal = calendar.monthcalendar(ano_sel, m_idx)
                 for week in cal:
                     cols_g = st.columns(7)
@@ -282,21 +252,17 @@ if check_login():
                             data_c = datetime(ano_sel, m_idx, day).date()
                             status, cor = t["livre"], "#28a745"
                             if not df_ferias.empty:
-                                df_viz = df_ferias.copy()
-                                df_viz['Data Início'] = pd.to_datetime(df_viz['Data Início'], dayfirst=True).dt.date
-                                df_viz['Data Final'] = pd.to_datetime(df_viz['Data Final'], dayfirst=True).dt.date
-                                conf_v = df_viz[(df_viz['Equipe'] == eq_sel) & (data_c >= df_viz['Data Início']) & (data_c <= df_viz['Data Final'])]
+                                df_v = df_ferias.copy()
+                                df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
+                                df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
+                                conf_v = df_v[(df_v['Equipe'] == eq_sel) & (data_c >= df_v['Data Início']) & (data_c <= df_v['Data Final'])]
                                 if not conf_v.empty: status, cor = conf_v.iloc[0]['Nome'], "#dc3545"
-                            cols_g[i].markdown(f"""<div style="background-color:{cor};color:white;padding:5px;border-radius:5px;text-align:center;margin-bottom:8px;font-size:11px;height:55px;"><small>{day}</small><br><b>{status}</b></div>""", unsafe_allow_html=True)
+                            cols_g[i].markdown(f'<div style="background-color:{cor};color:white;padding:5px;border-radius:5px;text-align:center;margin-bottom:8px;font-size:11px;height:55px;"><small>{day}</small><br><b>{status}</b></div>', unsafe_allow_html=True)
 
-            # --- LOG DE REGISTROS CRONOLÓGICO ---
             st.divider()
             st.subheader(t["log_tit"])
             if not df_ferias.empty:
-                df_ordenado = df_ferias.copy()
-                df_ordenado['Data Início DT'] = pd.to_datetime(df_ordenado['Data Início'], dayfirst=True)
-                # Ordena para que os mais próximos de sair de férias fiquem no topo
-                df_ordenado = df_ordenado.sort_values(by='Data Início DT', ascending=True)
-                st.dataframe(df_ordenado.drop(columns=['Data Início DT']), use_container_width=True, hide_index=True)
-            else:
-                st.info("Nenhum registro encontrado.")
+                df_log = df_ferias.copy()
+                df_log['Data_Início_DT'] = pd.to_datetime(df_log['Data Início'], dayfirst=True)
+                df_log = df_log.sort_values(by='Data_Início_DT', ascending=True)
+                st.dataframe(df_log.drop(columns=['Data_Início_DT']), use_container_width=True, hide_index=True)
