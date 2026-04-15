@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import calendar
 import random
 import gspread
 
@@ -30,116 +31,125 @@ TORRES = {
 
 PESSOA_PARA_TORRE = {pessoa: torre for torre, pessoas in TORRES.items() for pessoa in pessoas}
 
-# --- DICIONÁRIO DE TRADUÇÃO ---
-I18N = {
-    "PT": {
-        "titulo": "🚀 MMD | Portal de Gestão 2026",
-        "aba_escala": "📅 Escalas",
-        "aba_ferias": "🌴 Planejamento de Férias",
-        "login_tit": "Portal de Escalas MMD",
-        "usuario": "Usuário", "senha": "Senha", "acessar": "Acessar",
-        "dias": ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"],
-        "meses": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    }
-}
-t = I18N["PT"]
-
-# --- FUNÇÃO DE ESCALA ---
-def gerar_escala_balanceada(nomes):
-    random.seed(42)
-    fb = nomes.copy()
-    random.shuffle(fb)
-    c_tot = {n: 0 for n in nomes}
-    dias = pd.date_range(datetime(2026, 1, 1), datetime(2026, 12, 31), freq='B')
-    esc = []
-    for d in dias:
-        dt, sem, d_sem = d.strftime("%d/%m/%Y"), d.isocalendar()[1], d.weekday()
-        ap_m = min([n for n in fb], key=lambda x: c_tot[x]); c_tot[ap_m] += 1
-        esc.append({"Semana": sem, "Data": dt, "Dia": t["dias"][d_sem], "Apresentador": ap_m})
-    return pd.DataFrame(esc)
+# --- TRADUÇÕES E NOMES ---
+MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+DIAS_SEM_PT = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"]
 
 # --- LOGIN ---
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center;'>Portal MMD</h2>", unsafe_allow_html=True)
-    with st.form("login"):
-        u = st.text_input("Usuário")
-        p = st.text_input("Senha", type="password")
-        if st.form_submit_button("Entrar"):
-            if u == "MMD-Board" and p == "@MMD123#":
-                st.session_state.logged_in = True
-                st.rerun()
-            else: st.error("Dados incorretos")
+    with st.container():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.form("login"):
+                u = st.text_input("Usuário")
+                p = st.text_input("Senha", type="password")
+                if st.form_submit_button("Acessar"):
+                    if u == "MMD-Board" and p == "@MMD123#":
+                        st.session_state.logged_in = True
+                        st.rerun()
+                    else: st.error("Dados incorretos")
 else:
-    tab_escala, tab_ferias = st.tabs([t["aba_escala"], t["aba_ferias"]])
+    tab_escala, tab_ferias = st.tabs(["📅 Escalas", "🌴 Planejamento de Férias"])
 
     # --- ABA 1: ESCALAS ---
     with tab_escala:
-        st.title(t["titulo"])
+        st.title("🚀 MMD | Portal de Gestão 2026")
+        # Lógica de Escala Simplificada para Exibição
         nomes_lista = sorted(list(PESSOA_PARA_TORRE.keys()))
-        df_escala = gerar_escala_balanceada(nomes_lista)
-        st.dataframe(df_escala, use_container_width=True)
+        random.seed(42)
+        dias_uteis = pd.date_range(start="2026-01-01", end="2026-12-31", freq='B')
+        escala_data = []
+        for i, data in enumerate(dias_uteis):
+            escala_data.append({
+                "Semana": data.isocalendar()[1],
+                "Data": data.strftime("%d/%m/%Y"),
+                "Dia": DIAS_SEM_PT[data.weekday()],
+                "Apresentador": nomes_lista[i % len(nomes_lista)]
+            })
+        st.dataframe(pd.DataFrame(escala_data), use_container_width=True)
 
-    # --- ABA 2: FÉRIAS ---
+    # --- ABA 2: FÉRIAS (LAYOUT ORIGINAL RESTAURADO) ---
     with tab_ferias:
-        st.title(t["aba_ferias"])
-        sh = conectar_google_sheets()
+        st.title("🌴 Planejamento de Férias Integrado")
+        st.info("Regra: Pessoas da mesma torre não podem sair de férias no mesmo período.")
         
+        sh = conectar_google_sheets()
         if sh:
             ws = sh.worksheet("DB_FERIAS")
-            raw_data = ws.get_all_records()
-            df_ferias = pd.DataFrame(raw_data)
+            df_ferias = pd.DataFrame(ws.get_all_records())
 
-            col_form, col_grade = st.columns([1, 2])
+            col_form, col_grade = st.columns([1, 3])
 
             with col_form:
-                st.subheader("📝 Registrar Período")
-                with st.form("form_ferias", clear_on_submit=True):
-                    nome_sel = st.selectbox("Colaborador", nomes_lista)
-                    login_user = st.text_input("Seu Usuário (Obrigatório)")
-                    d_ini = st.date_input("Data de Início")
-                    d_fim = st.date_input("Data de Término")
-                    obs = st.text_input("Observação", "Férias 2026")
+                st.subheader("Marcar Período")
+                with st.form("cad_ferias", clear_on_submit=True):
+                    nome_f = st.selectbox("Seu Nome:", nomes_lista)
+                    user_login = st.text_input("Seu Usuário (Obrigatório):")
+                    d_ini = st.date_input("Início:", value=datetime.today())
+                    d_fim = st.date_input("Término:", value=datetime.today() + timedelta(days=10))
+                    obs = st.text_input("Observação:", "Férias 2026")
                     
                     if st.form_submit_button("💾 Salvar no Sheets"):
-                        if not login_user:
-                            st.error("Por favor, preencha seu usuário.")
-                        elif d_ini > d_fim:
-                            st.error("Data de início não pode ser maior que o término.")
+                        if not user_login:
+                            st.error("Por favor, insira seu usuário.")
                         else:
-                            torre_sel = PESSOA_PARA_TORRE.get(nome_sel)
-                            # Ordem das colunas: Nome, Data Início, Data Final, Equipe, Observação, Data Registro, Usuário Logado
+                            equipe_sel = PESSOA_PARA_TORRE.get(nome_f)
+                            # Colunas: Nome, Data Início, Data Final, Equipe, Observação, Data Registro, Usuário Logado
                             nova_linha = [
-                                nome_sel, 
-                                d_ini.strftime("%d/%m/%Y"), 
-                                d_fim.strftime("%d/%m/%Y"), 
-                                torre_sel, 
-                                obs, 
-                                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                                login_user
+                                nome_f, d_ini.strftime("%d/%m/%Y"), d_fim.strftime("%d/%m/%Y"), 
+                                equipe_sel, obs, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user_login
                             ]
                             ws.append_row(nova_linha)
-                            st.success("Férias registradas com sucesso!")
+                            st.success("Registrado com sucesso!")
                             st.rerun()
 
             with col_grade:
-                st.subheader("📅 Grade de Disponibilidade")
-                mes_n = st.selectbox("Selecione o Mês", range(1, 13), format_func=lambda x: t["meses"][x-1])
+                st.write("Visualizar Disponibilidade:")
+                mes_nome = st.selectbox("Selecione o Mês:", MESES_PT, index=datetime.now().month-1)
+                mes_idx = MESES_PT.index(mes_nome) + 1
                 
-                if not df_ferias.empty:
-                    # Filtra apenas quem é da mesma torre para a grade visual
-                    user_torre = PESSOA_PARA_TORRE.get(nome_sel)
-                    df_view = df_ferias[df_ferias['Equipe'] == user_torre].copy()
-                    
-                    # Converte datas para comparação
-                    df_view['Data Início'] = pd.to_datetime(df_view['Data Início'], dayfirst=True)
-                    df_view['Data Final'] = pd.to_datetime(df_view['Data Final'], dayfirst=True)
-
-                    st.write(f"Exibindo férias para a torre: **{user_torre}**")
-                    st.dataframe(df_view[['Nome', 'Data Início', 'Data Final', 'Observação']], use_container_width=True)
+                st.subheader(f"Grade Mensal: {mes_nome} / 2026")
                 
-                st.info("Dica: Os dias ocupados na planilha bloqueiam automaticamente a disponibilidade na torre.")
+                # Lógica da Grade Colorida baseada na Equipe do nome selecionado
+                torre_atual = PESSOA_PARA_TORRE.get(nome_f)
+                
+                # Criar grid de calendários (7 colunas)
+                cols_grade = st.columns(7)
+                cal = calendar.monthcalendar(2026, mes_idx)
+                
+                for week in cal:
+                    for i, day in enumerate(week):
+                        if day == 0:
+                            cols_grade[i].write("")
+                        else:
+                            data_box = datetime(2026, mes_idx, day)
+                            status = "Livre"
+                            bg_color = "#28a745" # Verde
+                            
+                            # Verificar se alguém da mesma equipe está de férias nesta data
+                            if not df_ferias.empty:
+                                df_ferias['Data Início'] = pd.to_datetime(df_ferias['Data Início'], dayfirst=True)
+                                df_ferias['Data Final'] = pd.to_datetime(df_ferias['Data Final'], dayfirst=True)
+                                
+                                conflito = df_ferias[
+                                    (df_ferias['Equipe'] == torre_atual) & 
+                                    (data_box >= df_ferias['Data Início']) & 
+                                    (data_box <= df_ferias['Data Final'])
+                                ]
+                                
+                                if not conflito.empty:
+                                    status = conflito.iloc[0]['Nome']
+                                    bg_color = "#dc3545" # Vermelho
+                            
+                            cols_grade[i].markdown(
+                                f"""<div style="background-color:{bg_color}; color:white; padding:5px; 
+                                border-radius:5px; text-align:center; margin-bottom:5px;">
+                                <span style="font-size:12px;">{day}</span><br><b>{status}</b></div>""", 
+                                unsafe_allow_html=True
+                            )
 
             st.divider()
-            st.subheader("📋 Log Geral de Registros")
-            st.table(df_ferias.tail(10))
+            st.subheader("📋 Log de Férias (Base Sheets)")
+            st.dataframe(df_ferias.tail(10), use_container_width=True)
