@@ -82,7 +82,8 @@ I18N = {
         "err_conflito": "❌ Erro: {nome} da equipe {equipe} já possui férias neste período.",
         "sucesso": "✅ Férias registradas!",
         "livre": "Livre",
-        "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+        "dias_semana_curto": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"],
+        "msg_ferias": "🏖️ EM FÉRIAS - Acionar Backup"
     },
     "ES": {
         "lang_code": "es-ES",
@@ -128,11 +129,12 @@ I18N = {
         "viz_ocupacao": "Ocupación: {equipe}",
         "log_tit": "📋 Próximas Vacaciones (Orden Cronológico)",
         "err_user": "Por favor, informe su usuario.",
-        "err_data": "La fecha de inicio no puede ser mayor que la fecha de finalización.",
+        "err_data": "La fecha de inicio no pode ser maior que a data de finalización.",
         "err_conflito": "❌ Error: {nome} del equipo {equipe} ya tiene vacaciones en este periodo.",
         "sucesso": "✅ ¡Vacaciones registradas!",
         "livre": "Libre",
-        "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        "dias_semana_curto": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+        "msg_ferias": "🏖️ EN VACACIONES - Contactar Backup"
     }
 }
 
@@ -259,14 +261,43 @@ def exportar_excel_limpo(df_total, mes_nome=None):
             row_idx += 1
     return output.getvalue()
 
-def renderizar_card(row):
+def renderizar_card(row, df_ferias_check=None):
+    apresentador = row['Apresentador']
+    data_reuniao = datetime.strptime(row['Data'], "%d/%m/%Y").date()
+    esta_de_ferias = False
+
+    # Lógica de Linkagem entre Escalas e Férias
+    if df_ferias_check is not None and not df_ferias_check.empty:
+        try:
+            df_v = df_ferias_check.copy()
+            df_v['Data Início'] = pd.to_datetime(df_v['Data Início'], dayfirst=True).dt.date
+            df_v['Data Final'] = pd.to_datetime(df_v['Data Final'], dayfirst=True).dt.date
+            
+            # Verifica se o apresentador está de férias na data desta reunião
+            ferias_ativa = df_v[(df_v['Nome'] == apresentador) & 
+                                (data_reuniao >= df_v['Data Início']) & 
+                                (data_reuniao <= df_v['Data Final'])]
+            
+            if not ferias_ativa.empty:
+                esta_de_ferias = True
+        except:
+            esta_de_ferias = False
+
+    # Define o visual do card dependendo do status de férias
+    if esta_de_ferias:
+        cor_borda = "#f1c40f" # Amarelo para atenção
+        status_html = f"""<div style="margin-top:15px; background-color:#fff3cd; color:#856404; padding:8px; border-radius:5px; font-size:11px; text-align:center; font-weight:bold; border: 1px solid #ffeeba;">{t['msg_ferias']}</div>"""
+    else:
+        cor_borda = "#ff4b4b" # Vermelho padrão
+        status_html = f"""<div style="margin-top:15px;"><a href="{row['Link']}" target="_blank" style="display:block;text-decoration:none;color:white;background-color:#0078d4;padding:8px;border-radius:5px;font-size:11px;text-align:center;font-weight:bold;">{t['agendar']}</a></div>"""
+
     st.markdown(f"""
-    <div style="background-color:#f0f2f6;padding:15px;border-radius:10px;border-left:5px solid #ff4b4b;min-height:220px;color:#333;margin-bottom:10px;">
+    <div style="background-color:#f0f2f6;padding:15px;border-radius:10px;border-left:5px solid {cor_borda};min-height:220px;color:#333;margin-bottom:10px;">
         <b style="font-size:14px;color:#555;">{row['Reunião']}</b><br><br>
-        <span style="font-size:18px;font-weight:bold;color:#111;">🏆 {row['Apresentador']}</span><br><br>
+        <span style="font-size:18px;font-weight:bold;color:#111;">🏆 {apresentador}</span><br><br>
         <span style="font-size:13px;color:#444;">{t['backup']}: {row['Backup']}</span><br>
         <span title="{t['backup_oculto']}: {row['BackupOculto']}" style="font-size:13px;color:#444;cursor:help;">{t['backup2']}: {row['Backup2']}</span>
-        <div style="margin-top:15px;"><a href="{row['Link']}" target="_blank" style="display:block;text-decoration:none;color:white;background-color:#0078d4;padding:8px;border-radius:5px;font-size:11px;text-align:center;font-weight:bold;">{t['agendar']}</a></div>
+        {status_html}
     </div>
     """, unsafe_allow_html=True)
 
@@ -304,7 +335,7 @@ if check_login():
     with st.sidebar.expander(t["estrutura_tit"]):
         for torre, membros in TORRES.items(): st.markdown(f"**{torre}:** {', '.join(membros)}")
     
-    # --- ROTEIRO TERÇA (ATUALIZADO) ---
+    # --- ROTEIROS ---
     with st.sidebar.expander(t["roteiro_ter"]):
         st.markdown("""
         **Terça-feira: Práticas + Iniciativas + Tracker + Work Plan**
@@ -323,7 +354,6 @@ if check_login():
         13. Behavior (Reconhecimento e notas)
         """)
 
-    # --- ROTEIRO QUINTA (ATUALIZADO) ---
     with st.sidebar.expander(t["roteiro_qui"]):
         st.markdown("""
         **Quinta-feira: Lead Time e SLA + FTR + CATS/BH + Workplan**
@@ -360,6 +390,16 @@ if check_login():
 
         st.divider()
         busca = st.selectbox(t["buscar"], [t["todos"]] + nomes)
+        
+        # Carrega dados de férias para linkagem nos filtros e cards
+        sh = conectar_google_sheets()
+        df_f_check = pd.DataFrame()
+        if sh:
+            try:
+                ws_f = sh.worksheet("DB_FERIAS")
+                df_f_check = pd.DataFrame(ws_f.get_all_records())
+            except: pass
+
         if busca != t["todos"]:
             df_b = df_total[df_total["Apresentador"] == busca].copy()
             st.info(t["stats"].format(nome=busca, total=len(df_b), dor=len(df_b[df_b["Reunião"] == "DOR"])))
@@ -368,15 +408,15 @@ if check_login():
         st.divider()
         s_idx = st.select_slider(t["semana"], options=sorted(df_total["Semana"].unique()), value=datetime.now().isocalendar()[1])
         df_s = df_total[df_total["Semana"] == s_idx]
+        
         for dt, gp in df_s.groupby("Data", sort=False):
             st.markdown(f"**{gp['Dia'].iloc[0]} - {dt}**")
             cols = st.columns(len(gp))
             for i, (_, r) in enumerate(gp.iterrows()):
-                with cols[i]: renderizar_card(r)
+                with cols[i]: renderizar_card(r, df_f_check)
 
     with tab_ferias:
         st.title(t["ferias_tit"])
-        sh = conectar_google_sheets()
         if sh:
             try:
                 ws = sh.worksheet("DB_FERIAS")
@@ -414,21 +454,21 @@ if check_login():
             with col_grade:
                 st.subheader(t["grade_tit"])
                 c1, c2, c3 = st.columns(3)
-                with c1: mes_sel = st.selectbox(t["sel_mes"], t["meses"], index=datetime.now().month-1, key="mes_f")
-                with c2: ano_sel = st.selectbox(t["sel_ano"], [2026, 2027, 2028, 2029], key="ano_f")
+                with c1: m_f_sel = st.selectbox(t["sel_mes"], t["meses"], index=datetime.now().month-1, key="mes_f")
+                with c2: a_f_sel = st.selectbox(t["sel_ano"], [2026, 2027, 2028, 2029], key="ano_f")
                 with c3: eq_sel = st.selectbox(t["filtro_equipe"], sorted(list(TORRES.keys())), key="eq_f")
-                m_idx = t["meses"].index(mes_sel) + 1
+                m_f_idx = t["meses"].index(m_f_sel) + 1
                 st.caption(t["viz_ocupacao"].format(equipe=eq_sel))
                 
                 cols_h = st.columns(7)
                 for i, d_n in enumerate(t["dias_semana_curto"]): cols_h[i].markdown(f"<p style='text-align:center;font-weight:bold;color:gray;'>{d_n}</p>", unsafe_allow_html=True)
-                cal = calendar.monthcalendar(ano_sel, m_idx)
+                cal = calendar.monthcalendar(a_f_sel, m_f_idx)
                 for week in cal:
                     cols_g = st.columns(7)
                     for i, day in enumerate(week):
                         if day == 0: cols_g[i].write("")
                         else:
-                            data_c = datetime(ano_sel, m_idx, day).date()
+                            data_c = datetime(a_f_sel, m_f_idx, day).date()
                             status, cor = t["livre"], "#28a745"
                             if not df_ferias.empty:
                                 df_v = df_ferias.copy()
