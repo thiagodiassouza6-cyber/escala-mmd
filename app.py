@@ -408,7 +408,7 @@ if check_login():
         
         # --- EXIBIÇÃO MANHÃ ---
         if not reunioes_manha.empty:
-            st.caption("☀️ **Reuniões da Manhã (09:45)**")
+            st.caption("☀️ **Reuniões da Manhã (09:30)**")
             cols_m = st.columns(len(reunioes_manha))
             for i, (_, r) in enumerate(reunioes_manha.iterrows()):
                 with cols_m[i]:
