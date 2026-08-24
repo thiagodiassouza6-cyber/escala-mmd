@@ -135,13 +135,13 @@ def injetar_leitor_acessibilidade(lang_code):
     """, height=0, width=0)
 
 # --- ESTRUTURA DOS TIMES E GRUPOS ---
-indireto_br = ["Debora", "Dani", "Dyana", "Luca", "Bruno", "Thiago", "Tobias"]
+indireto_br = ["Debora", "Dani", "Dyana", "Luca", "Bruno", "Thiago"]
 fert_br = ["Amanda", "Douglas", "Renan", "Anna"]
 crm_br = ["Julia", "Bruna"]
 direto_br = ["Livia", "Rafael"]
 
 direto_latam = ["Ariel", "Enrique", "Sonia", "Jazmin", "Gisele"]
-fert_latam = ["Florencia", "Jesus", "Bianca", "Soledad", "Mijal", "German", "Sebastian", "Estefanía", "Andrea", "Honorato", "Nathan", "Rocio", "Faiha"]
+fert_latam = ["Florencia", "Jesus", "Bianca", "Soledad", "Mijal", "German", "Sebastian", "Andrea", "Honorato", "Nathan", "Rocio"]
 
 time_brasil_completo = sorted(list(set(indireto_br + fert_br + crm_br + direto_br)))
 time_latam_completo = sorted(list(set(direto_latam + fert_latam)))
