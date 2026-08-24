@@ -141,7 +141,7 @@ crm_br = ["Julia", "Bruna"]
 direto_br = ["Livia", "Rafael"]
 
 direto_latam = ["Ariel", "Enrique", "Sonia", "Jazmin", "Gisele"]
-fert_latam = ["Florencia", "Jesus", "Bianca", "Soledad", "Mijal", "German", "Sebastian", "Andrea", "Honorato", "Nathan", "Rocio"]
+fert_latam = ["Florencia", "Jesus", "Bianca M.", "Soledad", "Mijal", "German", "Sebastian", "Andrea", "Honorato", "Nathan", "Rocio"]
 
 time_brasil_completo = sorted(list(set(indireto_br + fert_br + crm_br + direto_br)))
 time_latam_completo = sorted(list(set(direto_latam + fert_latam)))
